@@ -1,0 +1,14 @@
+# Python
+ai-engine-python/venv/
+ai-engine-python/__pycache__/
+*.pyc
+
+# Java / Maven
+game-server-java/gameserver/target/
+*.class
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
