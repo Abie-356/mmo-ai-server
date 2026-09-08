@@ -1,5 +1,6 @@
 com\mmo\grpc\AIEngineGrpc$2.class
 com\mmo\grpc\GameBridgeProto$GameState.class
+com\mmo\GameCharacter.class
 com\mmo\grpc\AIEngineGrpc$MethodHandlers.class
 com\mmo\grpc\AIEngineGrpc.class
 com\mmo\grpc\AIEngineGrpc$AIEngineImplBase.class
