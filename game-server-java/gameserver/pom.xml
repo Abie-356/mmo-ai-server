@@ -25,6 +25,27 @@
       <artifactId>javax.annotation-api</artifactId>
       <version>1.3.2</version>
     </dependency>
+    <!-- LibGDX Core Engine -->
+    <dependency>
+        <groupId>com.badlogicgames.gdx</groupId>
+        <artifactId>gdx</artifactId>
+        <version>1.12.1</version>
+    </dependency>
+    
+    <!-- LibGDX Desktop Backend (LWJGL3) -->
+    <dependency>
+        <groupId>com.badlogicgames.gdx</groupId>
+        <artifactId>gdx-backend-lwjgl3</artifactId>
+        <version>1.12.1</version>
+    </dependency>
+    
+    <!-- LibGDX Native Libraries for Windows/Mac/Linux -->
+    <dependency>
+        <groupId>com.badlogicgames.gdx</groupId>
+        <artifactId>gdx-platform</artifactId>
+        <version>1.12.1</version>
+        <classifier>natives-desktop</classifier>
+    </dependency>
   </dependencies>
 
   <build>
