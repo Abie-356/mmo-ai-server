@@ -1,46 +1,212 @@
 package com.mmo;
 
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import java.util.ArrayList;
 
 public class GameCharacter {
-    private Texture sheet;
-    private Animation<TextureRegion> animation;
-    private float stateTime;
+    private ArrayList<Texture> textures = new ArrayList<>();
+    private Animation<TextureRegion> idleAnim, runAnim, jumpAnim, attackAnim, attack2Anim, superAnim, parryAnim;
     
-    // Public variables so the AI can update their positions later
+    public float stateTime = 0f;
+    public float attackTimer = 0f;
+    public float superTimer = 0f;
+    public float parryTimer = 0f;
+    
     public float x, y, size;
+    
+    // --- State Variables ---
+    public boolean isMoving = false;
+    public boolean isFacingLeft = false;
+    public boolean isJumping = false;
+    public boolean hasDealtDamage = false; // Add this near your other booleans
+    
+    public boolean isAttacking = false;
+    public boolean isSecondaryAttacking = false;
+    public boolean isSuperAttacking = false;
+    public boolean isParrying = false;
+    
+    public float speed = 300f; 
+    public float yVelocity = 0f;
+    public float gravity = -1800f; 
+    public float jumpStrength = 750f; 
+    public float floorY; 
+    // Add these right below your jumpStrength and floorY variables
+    public float maxHealth = 100f;
+    public float currentHealth = 100f;
+    
+    public float superCooldownRemaining = 0f;
+    public final float SUPER_COOLDOWN = 3.0f;
+    
+    public final float PARRY_WINDOW = 0.3f; // The exact time you have invulnerability
 
-    public GameCharacter(String texturePath, int cols, int rows, float startX, float startY, float size) {
-        this.sheet = new Texture(Gdx.files.internal(texturePath));
+    public GameCharacter(
+            String idlePath, int idleCols,
+            String runPath, int runCols,
+            String jumpPath, int jumpCols,
+            String attackPath, int attackCols,
+            String attack2Path, int attack2Cols,
+            String superPath, int superCols,
+            String parryPath, int parryCols,
+            float startX, float startY, float size) {
+        
         this.x = startX;
         this.y = startY;
+        this.floorY = startY;
         this.size = size;
 
-        // Slice the sprite sheet
-        TextureRegion[][] tmp = TextureRegion.split(sheet, sheet.getWidth() / cols, sheet.getHeight() / rows);
-        TextureRegion[] frames = new TextureRegion[cols * rows];
-        int index = 0;
-        for (int i = 0; i < rows; i++) {
-            for (int j = 0; j < cols; j++) {
-                frames[index++] = tmp[i][j];
-            }
-        }
+        this.idleAnim = createAnimation(idlePath, idleCols, 0.1f);
+        this.runAnim = createAnimation(runPath, runCols, 0.1f);
+        this.jumpAnim = createAnimation(jumpPath, jumpCols, 0.1f);
+        this.attackAnim = createAnimation(attackPath, attackCols, 0.08f);
+        this.attack2Anim = createAnimation(attack2Path, attack2Cols, 0.08f);
+        this.superAnim = createAnimation(superPath, superCols, 0.15f);
+        this.parryAnim = createAnimation(parryPath, parryCols, 0.075f); // Fast flash
+    }
+
+    private Animation<TextureRegion> createAnimation(String path, int cols, float frameDuration) {
+        return createAnimation(path, cols, 1, frameDuration); // Defaults to 1 row
+    }
+
+    private Animation<TextureRegion> createAnimation(String path, int cols, int rows, float frameDuration) {
+        Texture sheet = new Texture(Gdx.files.internal(path));
+        textures.add(sheet);
         
-        this.animation = new Animation<TextureRegion>(0.1f, frames);
-        this.stateTime = 0f;
+        TextureRegion[][] tmp = TextureRegion.split(sheet, sheet.getWidth() / cols, sheet.getHeight() / rows);
+        
+        TextureRegion[] frames = new TextureRegion[cols];
+        for (int i = 0; i < cols; i++) {
+            frames[i] = tmp[0][i]; 
+        }
+        return new Animation<TextureRegion>(frameDuration, frames);
+    }
+
+    // --- Action Methods ---
+    public void jump() {
+        if (!isJumping && !isSuperAttacking && !isParrying) {
+            isJumping = true;
+            yVelocity = jumpStrength;
+        }
+    }
+
+    public void attack() {
+        if (!isAttacking && !isSecondaryAttacking && !isSuperAttacking && !isParrying) {
+            isAttacking = true;
+            attackTimer = 0f; 
+            hasDealtDamage = false; // Reset on new swing
+        }
+    }
+    
+    public void takeDamage(float amount) {
+        currentHealth -= amount;
+        if (currentHealth < 0) currentHealth = 0;
+        
+        // Trigger the flinch animation visually
+        isParrying = true; 
+        parryTimer = 0f;
+    }
+
+    public void secondaryAttack() {
+        if (!isAttacking && !isSecondaryAttacking && !isSuperAttacking && !isParrying) {
+            isSecondaryAttacking = true;
+            attackTimer = 0f; 
+            hasDealtDamage = false; // Reset on new swing
+        }
+    }
+
+    public void superAttack() {
+        if (!isSuperAttacking && !isAttacking && !isSecondaryAttacking && !isParrying && superCooldownRemaining <= 0) {
+            isSuperAttacking = true;
+            superTimer = 0f;
+            superCooldownRemaining = SUPER_COOLDOWN;
+            hasDealtDamage = false; // Reset on new swing
+            System.out.println("ULTIMATE ACTIVATED!");
+        }
+    }
+
+    // Generates a collision box, stripping away the transparent PNG padding
+    public Rectangle getHitbox() {
+        float paddingX = size * 0.35f; // Shaves off 35% empty space on the sides
+        float paddingY = size * 0.1f;  // Shaves off 10% empty space on top/bottom
+        
+        return new Rectangle(
+            x + paddingX, 
+            y + paddingY, 
+            size - (paddingX * 2), 
+            size - (paddingY * 2)
+        );
+    }
+
+    public void parry() {
+        if (!isParrying && !isAttacking && !isSecondaryAttacking && !isSuperAttacking) {
+            isParrying = true;
+            parryTimer = 0f;
+            System.out.println("PARRY STANCE!");
+        }
     }
 
     public void render(SpriteBatch batch, float deltaTime) {
         stateTime += deltaTime;
-        TextureRegion currentFrame = animation.getKeyFrame(stateTime, true);
+        
+        if (superCooldownRemaining > 0) superCooldownRemaining -= deltaTime;
+        
+        if (isJumping) {
+            yVelocity += gravity * deltaTime;
+            y += yVelocity * deltaTime;
+            if (y <= floorY) {
+                y = floorY;
+                isJumping = false;
+                yVelocity = 0f;
+            }
+        }
+
+        // Process Action Timers
+        if (isAttacking || isSecondaryAttacking) {
+            attackTimer += deltaTime;
+            if (isAttacking && attackAnim.isAnimationFinished(attackTimer)) isAttacking = false;
+            if (isSecondaryAttacking && attack2Anim.isAnimationFinished(attackTimer)) isSecondaryAttacking = false;
+        }
+
+        if (isSuperAttacking) {
+            superTimer += deltaTime;
+            if (superAnim.isAnimationFinished(superTimer)) isSuperAttacking = false;
+        }
+
+        if (isParrying) {
+            parryTimer += deltaTime;
+            if (parryTimer >= PARRY_WINDOW) isParrying = false;
+        }
+
+        // Animation Priority Logic
+        TextureRegion currentFrame;
+        if (isParrying) {
+            currentFrame = parryAnim.getKeyFrame(parryTimer, false);
+        } else if (isSuperAttacking) {
+            currentFrame = superAnim.getKeyFrame(superTimer, false);
+        } else if (isAttacking) {
+            currentFrame = attackAnim.getKeyFrame(attackTimer, false);
+        } else if (isSecondaryAttacking) {
+            currentFrame = attack2Anim.getKeyFrame(attackTimer, false);
+        } else if (isJumping) {
+            currentFrame = jumpAnim.getKeyFrame(stateTime, true);
+        } else if (isMoving) {
+            currentFrame = runAnim.getKeyFrame(stateTime, true);
+        } else {
+            currentFrame = idleAnim.getKeyFrame(stateTime, true);
+        }
+        
+        if (currentFrame.isFlipX() != isFacingLeft) {
+            currentFrame.flip(true, false);
+        }
+
         batch.draw(currentFrame, x, y, size, size);
     }
 
     public void dispose() {
-        if (sheet != null) sheet.dispose();
+        for (Texture t : textures) t.dispose();
     }
 }
