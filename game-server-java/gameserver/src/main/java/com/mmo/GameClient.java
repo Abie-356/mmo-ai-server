@@ -20,7 +20,7 @@ import com.mmo.grpc.GameBridgeProto;
 
 public class GameClient extends ApplicationAdapter {
     private SpriteBatch batch;
-    private ShapeRenderer shapeRenderer;
+    private ShapeRenderer shapeRenderer; 
     
     private Texture bgLayer1, bgLayer2, bgLayer3, bgLayer4;
     private GameCharacter king;
@@ -57,7 +57,7 @@ public class GameClient extends ApplicationAdapter {
             "assets/nebuchadnezar/Attack2.png", 4,
             "assets/nebuchadnezar/Attack3.png", 4,
             "assets/nebuchadnezar/Take Hit - white silhouette.png", 4,
-            "assets/nebuchadnezar/Death.png", 4, // ADDED DEATH
+            "assets/nebuchadnezar/Death.png", 4, 
             30, 130, 150 
         );
 
@@ -68,8 +68,8 @@ public class GameClient extends ApplicationAdapter {
             "assets/necromancer/Attack1.png", 8, 
             "assets/necromancer/Attack2.png", 8,
             "assets/necromancer/Attack1.png", 8, 
-            "assets/necromancer/Take hit.png", 3, // Kept your 3-frame fix!
-            "assets/necromancer/Death.png", 8,    // ADDED DEATH (adjust column count if needed)
+            "assets/necromancer/Take hit.png", 3, 
+            "assets/necromancer/Death.png", 8,    
             750, 19, 380 
         );
         boss.isFacingLeft = true;
@@ -91,6 +91,7 @@ public class GameClient extends ApplicationAdapter {
     public void render() {
         float deltaTime = Gdx.graphics.getDeltaTime();
         
+        // --- 1. Player Input & Boundaries ---
         king.isMoving = false; 
         if (!king.isDead) {
             if (Gdx.input.isKeyPressed(Input.Keys.A)) { king.x -= king.speed * deltaTime; king.isMoving = true; king.isFacingLeft = true; }
@@ -108,7 +109,7 @@ public class GameClient extends ApplicationAdapter {
         if (boss.x < -50) boss.x = -50; 
         if (boss.x > WORLD_WIDTH - 250) boss.x = WORLD_WIDTH - 250; 
 
-        // Combat Hit Detection (Now factors in dynamic weapon reach!)
+        // --- 2. Combat & Hit Detection ---
         boolean isKingSwinging = king.isAttacking || king.isSecondaryAttacking || king.isSuperAttacking;
         if (isKingSwinging && !king.hasDealtDamage && !king.isDead && !boss.isDead) {
             if (king.getHitbox().overlaps(boss.getHitbox())) {
@@ -121,19 +122,23 @@ public class GameClient extends ApplicationAdapter {
         boolean isBossSwinging = boss.isAttacking || boss.isSecondaryAttacking;
         if (isBossSwinging && !boss.hasDealtDamage && !boss.isDead && !king.isDead) {
             if (king.isParrying) {
-                boss.hasDealtDamage = true; 
+                boss.hasDealtDamage = true; // Parry negates damage
             } else if (boss.getHitbox().overlaps(king.getHitbox())) {
                 boss.hasDealtDamage = true; 
                 king.takeDamage(10f); 
             }
         }
 
+        // --- 3. High-Speed Network AI ---
         networkTimer += deltaTime;
-        if (networkTimer >= 0.4f && !boss.isDead) { 
+        if (networkTimer >= 0.4f) { 
             networkTimer = 0f;
             try {
                 String currentAction = "Idle";
-                if (king.isParrying) currentAction = "Parrying";
+                
+                // Alert Python if King is dead so the Boss stops swinging
+                if (king.isDead) currentAction = "Dead"; 
+                else if (king.isParrying) currentAction = "Parrying";
                 else if (king.isSuperAttacking) currentAction = "SuperAttacking";
                 else if (king.isAttacking || king.isSecondaryAttacking) currentAction = "Attacking";
                 else if (king.isMoving) currentAction = "Running";
@@ -149,17 +154,31 @@ public class GameClient extends ApplicationAdapter {
 
                 if (aiCommand.contains("MOVE_LEFT")) { boss.isMoving = true; boss.isFacingLeft = true; } 
                 else if (aiCommand.contains("MOVE_RIGHT")) { boss.isMoving = true; boss.isFacingLeft = false; } 
-                else if (aiCommand.contains("ATTACK")) { boss.isMoving = false; boss.attack(); }
+                else if (aiCommand.contains("SECONDARY_ATTACK")) { 
+                    boss.isMoving = false; 
+                    boss.isFacingLeft = (king.x < boss.x); // Force face toward King
+                    boss.secondaryAttack(); 
+                }
+                else if (aiCommand.contains("ATTACK")) { 
+                    boss.isMoving = false; 
+                    boss.isFacingLeft = (king.x < boss.x); // Force face toward King
+                    boss.attack(); 
+                }
                 else boss.isMoving = false;
+                
+                if (aiCommand.contains("JUMP")) boss.jump();
+
             } catch (Exception e) {}
         }
 
-        if (boss.isMoving && !boss.isDead && !boss.isAttacking) {
+        // Smooth Boss Movement Application (Runs at 60fps)
+        if (boss.isMoving && !boss.isDead && !boss.isAttacking && !boss.isSecondaryAttacking) {
             float bossSpeed = 160f; 
             if (boss.isFacingLeft) boss.x -= bossSpeed * deltaTime;
             else boss.x += bossSpeed * deltaTime;
         }
 
+        // --- 4. Visual Rendering ---
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
@@ -171,7 +190,6 @@ public class GameClient extends ApplicationAdapter {
         batch.draw(bgLayer2, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         batch.draw(bgLayer3, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         
-        // Characters now render when dead (to show the death animation)
         king.render(batch, deltaTime);
         boss.render(batch, deltaTime);
         
@@ -181,7 +199,6 @@ public class GameClient extends ApplicationAdapter {
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
-        // Health bars vanish when dead
         if (!king.isDead) {
             shapeRenderer.setColor(0.2f, 0.8f, 0.2f, 1);
             shapeRenderer.rect(king.x + (king.size * 0.2f), king.y + (king.size * 0.55f), 100f * (king.currentHealth / king.maxHealth), 8);

@@ -136,12 +136,13 @@ public class GameCharacter {
     }
 
     // Dynamic Hitbox: Stretches forward when attacking!
+    // Dynamic Hitbox: Stretches forward when attacking!
     public Rectangle getHitbox() {
         float paddingX = size * 0.35f; 
         float paddingY = size * 0.1f;  
         
         if (isAttacking || isSecondaryAttacking || isSuperAttacking) {
-            float weaponReach = size * 0.4f; // Expand hitbox by 40% forward
+            float weaponReach = size * 0.15f; // REDUCED from 0.4f to 0.15f
             if (isFacingLeft) {
                 return new Rectangle((x + paddingX) - weaponReach, y + paddingY, (size - (paddingX * 2)) + weaponReach, size - (paddingY * 2));
             } else {
