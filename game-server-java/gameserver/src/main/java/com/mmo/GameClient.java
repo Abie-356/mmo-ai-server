@@ -20,7 +20,7 @@ import com.mmo.grpc.GameBridgeProto;
 
 public class GameClient extends ApplicationAdapter {
     private SpriteBatch batch;
-    private ShapeRenderer shapeRenderer; // NEW: Renders health bars
+    private ShapeRenderer shapeRenderer;
     
     private Texture bgLayer1, bgLayer2, bgLayer3, bgLayer4;
     private GameCharacter king;
@@ -38,7 +38,7 @@ public class GameClient extends ApplicationAdapter {
     @Override
     public void create() {
         batch = new SpriteBatch();
-        shapeRenderer = new ShapeRenderer(); // Initialize it
+        shapeRenderer = new ShapeRenderer(); 
         
         camera = new OrthographicCamera();
         viewport = new FitViewport(WORLD_WIDTH, WORLD_HEIGHT, camera);
@@ -57,6 +57,7 @@ public class GameClient extends ApplicationAdapter {
             "assets/nebuchadnezar/Attack2.png", 4,
             "assets/nebuchadnezar/Attack3.png", 4,
             "assets/nebuchadnezar/Take Hit - white silhouette.png", 4,
+            "assets/nebuchadnezar/Death.png", 4, // ADDED DEATH
             30, 130, 150 
         );
 
@@ -67,12 +68,12 @@ public class GameClient extends ApplicationAdapter {
             "assets/necromancer/Attack1.png", 8, 
             "assets/necromancer/Attack2.png", 8,
             "assets/necromancer/Attack1.png", 8, 
-            "assets/necromancer/Take hit.png", 3, // FIXED THE VANISH: Changed from 4 to 2
+            "assets/necromancer/Take hit.png", 3, // Kept your 3-frame fix!
+            "assets/necromancer/Death.png", 8,    // ADDED DEATH (adjust column count if needed)
             750, 19, 380 
         );
         boss.isFacingLeft = true;
         
-        // Give the raid boss way more HP
         boss.maxHealth = 500f;
         boss.currentHealth = 500f;
 
@@ -90,34 +91,45 @@ public class GameClient extends ApplicationAdapter {
     public void render() {
         float deltaTime = Gdx.graphics.getDeltaTime();
         
-        // --- 1. Player Input & Controls ---
         king.isMoving = false; 
-        if (Gdx.input.isKeyPressed(Input.Keys.A)) { king.x -= king.speed * deltaTime; king.isMoving = true; king.isFacingLeft = true; }
-        if (Gdx.input.isKeyPressed(Input.Keys.D)) { king.x += king.speed * deltaTime; king.isMoving = true; king.isFacingLeft = false; }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.W) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) king.jump();
-        if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) king.attack();
-        if (Gdx.input.isButtonJustPressed(Input.Buttons.RIGHT)) king.secondaryAttack();
-        if (Gdx.input.isKeyJustPressed(Input.Keys.E)) king.superAttack();
-        if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) king.parry();
+        if (!king.isDead) {
+            if (Gdx.input.isKeyPressed(Input.Keys.A)) { king.x -= king.speed * deltaTime; king.isMoving = true; king.isFacingLeft = true; }
+            if (Gdx.input.isKeyPressed(Input.Keys.D)) { king.x += king.speed * deltaTime; king.isMoving = true; king.isFacingLeft = false; }
+            if (Gdx.input.isKeyJustPressed(Input.Keys.W) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) king.jump();
+            if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) king.attack();
+            if (Gdx.input.isButtonJustPressed(Input.Buttons.RIGHT)) king.secondaryAttack();
+            if (Gdx.input.isKeyJustPressed(Input.Keys.E)) king.superAttack();
+            if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) king.parry();
+        }
 
         if (king.x < -50) king.x = -50; 
         if (king.x > WORLD_WIDTH - 100) king.x = WORLD_WIDTH - 100;
+        
+        if (boss.x < -50) boss.x = -50; 
+        if (boss.x > WORLD_WIDTH - 250) boss.x = WORLD_WIDTH - 250; 
 
-        // --- 1.5 Combat & Collision Engine ---
+        // Combat Hit Detection (Now factors in dynamic weapon reach!)
         boolean isKingSwinging = king.isAttacking || king.isSecondaryAttacking || king.isSuperAttacking;
-        if (isKingSwinging && !king.hasDealtDamage) {
+        if (isKingSwinging && !king.hasDealtDamage && !king.isDead && !boss.isDead) {
             if (king.getHitbox().overlaps(boss.getHitbox())) {
                 king.hasDealtDamage = true; 
-                
-                // Deal Damage based on the attack type
                 if (king.isSuperAttacking) boss.takeDamage(35f);
                 else boss.takeDamage(15f);
             }
         }
+        
+        boolean isBossSwinging = boss.isAttacking || boss.isSecondaryAttacking;
+        if (isBossSwinging && !boss.hasDealtDamage && !boss.isDead && !king.isDead) {
+            if (king.isParrying) {
+                boss.hasDealtDamage = true; 
+            } else if (boss.getHitbox().overlaps(king.getHitbox())) {
+                boss.hasDealtDamage = true; 
+                king.takeDamage(10f); 
+            }
+        }
 
-        // --- 2. Network Logic ---
         networkTimer += deltaTime;
-        if (networkTimer >= 1.5f) { 
+        if (networkTimer >= 0.4f && !boss.isDead) { 
             networkTimer = 0f;
             try {
                 String currentAction = "Idle";
@@ -129,47 +141,56 @@ public class GameClient extends ApplicationAdapter {
                 GameBridgeProto.GameState state = GameBridgeProto.GameState.newBuilder()
                     .setPlayerId("Nebuchadnezzar")
                     .setPlayerX(king.x)
-                    .setPlayerY(king.y)
+                    .setPlayerY(boss.x) 
                     .setAction(currentAction)
                     .build();
 
                 String aiCommand = aiStub.sendState(state).getGeneratedCommand();
 
-                if (aiCommand.contains("MOVE_LEFT")) { boss.isMoving = true; boss.isFacingLeft = true; boss.x -= 50f; } 
-                else if (aiCommand.contains("MOVE_RIGHT")) { boss.isMoving = true; boss.isFacingLeft = false; boss.x += 50f; } 
-                else if (aiCommand.contains("ATTACK")) boss.attack();
+                if (aiCommand.contains("MOVE_LEFT")) { boss.isMoving = true; boss.isFacingLeft = true; } 
+                else if (aiCommand.contains("MOVE_RIGHT")) { boss.isMoving = true; boss.isFacingLeft = false; } 
+                else if (aiCommand.contains("ATTACK")) { boss.isMoving = false; boss.attack(); }
                 else boss.isMoving = false;
             } catch (Exception e) {}
         }
 
-        // --- 3. Visual Rendering ---
+        if (boss.isMoving && !boss.isDead && !boss.isAttacking) {
+            float bossSpeed = 160f; 
+            if (boss.isFacingLeft) boss.x -= bossSpeed * deltaTime;
+            else boss.x += bossSpeed * deltaTime;
+        }
+
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
         camera.update();
         batch.setProjectionMatrix(camera.combined);
 
-        // Draw Sprites
         batch.begin();
         batch.draw(bgLayer1, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         batch.draw(bgLayer2, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         batch.draw(bgLayer3, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+        
+        // Characters now render when dead (to show the death animation)
         king.render(batch, deltaTime);
         boss.render(batch, deltaTime);
+        
         batch.draw(bgLayer4, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         batch.end();
 
-        // Draw Health Bars on top of everything
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
-        // King Health (Green) - Lowered Y coordinate
-        shapeRenderer.setColor(0.2f, 0.8f, 0.2f, 1);
-        shapeRenderer.rect(king.x + (king.size * 0.2f), king.y + (king.size * 0.55f), 100f * (king.currentHealth / king.maxHealth), 8);
+        // Health bars vanish when dead
+        if (!king.isDead) {
+            shapeRenderer.setColor(0.2f, 0.8f, 0.2f, 1);
+            shapeRenderer.rect(king.x + (king.size * 0.2f), king.y + (king.size * 0.55f), 100f * (king.currentHealth / king.maxHealth), 8);
+        }
         
-        // Boss Health (Red, larger) - Lowered Y coordinate
-        shapeRenderer.setColor(0.9f, 0.1f, 0.1f, 1);
-        shapeRenderer.rect(boss.x + (boss.size * 0.35f), boss.y + (boss.size * 0.55f), 150f * (boss.currentHealth / boss.maxHealth), 12);
+        if (!boss.isDead) {
+            shapeRenderer.setColor(0.9f, 0.1f, 0.1f, 1);
+            shapeRenderer.rect(boss.x + (boss.size * 0.35f), boss.y + (boss.size * 0.55f), 150f * (boss.currentHealth / boss.maxHealth), 12);
+        }
         
         shapeRenderer.end();
     }
