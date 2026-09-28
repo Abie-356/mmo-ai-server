@@ -12,3 +12,7 @@ game-server-java/gameserver/target/
 .idea/
 .DS_Store
 Thumbs.db
+
+.m2/
+.tools/
+**/target/

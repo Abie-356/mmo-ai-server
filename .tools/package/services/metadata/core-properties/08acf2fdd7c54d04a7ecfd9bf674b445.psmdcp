@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<coreProperties xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.openxmlformats.org/package/2006/metadata/core-properties">
+  <dc:creator>Python Software Foundation</dc:creator>
+  <dc:description>Python 3.x is a programming language that lets you work more quickly and integrate your systems more effectively. You can learn to use Python 3.x and see almost immediate gains in productivity and lower maintenance costs.
+
+## Package Parameters
+
+- `/InstallDir` - Installation directory. **NOTE**: If you have pre-existing python3 installation, this parameter is ignored and existing python install location will be used
+- `/InstallDir32:` - Installation directory for 32bit python on 64bit Operating Systems. **NOTE**: Do only use this parameter if you wish to install 32bit python alongside 64bit python. 32Bit python will not be added on PATH.
+- `/NoLockdown` - Installation directory will not be locked down with Administrator only write permissions.
+
+Example: `choco install python314 --params "/InstallDir:C:\your\install\path"`
+
+## Notes
+
+- Python package manager `pip` is installed by default, but you can also invoke it using command `py -m pip` which will use `pip3` and adequate version of python if you also have python2 installed and/or pip2 on the `PATH`. For more details see [Python on Windows FAQ](https://docs.python.org/3/faq/windows.html).
+- For complete list of silent install options see the [Installing Without UI](https://docs.python.org/3/using/windows.html#installing-without-ui) page.
+- Some packages require working C++ SDK to build C-based Python modules. One way to do so is to install [visualstudio2019-workload-vctools](https://chocolatey.org/packages/visualstudio2019-workload-vctools). See [GitHub issue #1518](https://github.com/chocolatey-community/chocolatey-coreteampackages/issues/1518) for more details.</dc:description>
+  <dc:identifier>python314</dc:identifier>
+  <version>3.14.3</version>
+  <keywords>python programming development foss cross-platform admin</keywords>
+  <lastModifiedBy>choco, Version=2.6.0.0, Culture=neutral, PublicKeyToken=79d02ea9cad655eb;Microsoft Windows NT 10.0.17763.0;.NET Framework 4.8</lastModifiedBy>
+</coreProperties>

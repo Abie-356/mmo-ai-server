@@ -1,0 +1,11 @@
+#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
+#Sat Sep 12 14:22:21 IST 2026
+lwjgl-glfw-3.3.3-natives-linux-arm32.jar>central=
+lwjgl-glfw-3.3.3-natives-macos.jar>central=
+lwjgl-glfw-3.3.3-natives-linux-arm64.jar>central=
+lwjgl-glfw-3.3.3-natives-macos-arm64.jar>central=
+lwjgl-glfw-3.3.3.jar>central=
+lwjgl-glfw-3.3.3.pom>central=
+lwjgl-glfw-3.3.3-natives-windows-x86.jar>central=
+lwjgl-glfw-3.3.3-natives-windows.jar>central=
+lwjgl-glfw-3.3.3-natives-linux.jar>central=

@@ -1,0 +1,25 @@
+VERIFICATION
+
+Verification is intended to assist the Chocolatey moderators and community
+in verifying that this package's contents are trustworthy.
+
+The embedded software have been downloaded from the listed download
+location on <https://www.python.org/api/v2/downloads/release_file/>
+and can be verified by doing the following:
+
+1. Go to
+
+   x32: https://www.python.org/ftp/python/3.14.3/python-3.14.3.exe
+   x64: https://www.python.org/ftp/python/3.14.3/python-3.14.3-amd64.exe
+
+   to download the installer.
+
+2. You can use one of the following methods to obtain the SHA256 checksum:
+   - Use powershell function 'Get-FileHash'
+   - Use Chocolatey utility 'checksum.exe'
+
+   checksum32: F3A8E8499725BDBA6FFAC39BD822647FEBCF23740D430ACDC948C4CBC58B1BFE
+   checksum64: B68AD91421AFBBD1A628105199C8C5F6179B21BA799067A8D8C0BBAC3B7DEFB0
+
+The file 'LICENSE.txt' has been obtained from Python 3.14 Documentation archive <https://docs.python.org/3.14/archives/python-3.14-docs-text.zip>
+and can also be found at <https://docs.python.org/3.14/license.html>.
