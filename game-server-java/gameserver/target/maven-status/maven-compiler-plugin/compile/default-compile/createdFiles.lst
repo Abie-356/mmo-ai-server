@@ -1,10 +1,12 @@
 com\mmo\grpc\AIEngineGrpc$2.class
 com\mmo\grpc\GameBridgeProto$GameState.class
+com\mmo\GameCharacter.class
 com\mmo\grpc\AIEngineGrpc$MethodHandlers.class
 com\mmo\grpc\AIEngineGrpc.class
 com\mmo\grpc\AIEngineGrpc$AIEngineImplBase.class
 com\mmo\grpc\AIEngineGrpc$AIEngineBlockingStub.class
 com\mmo\grpc\GameBridgeProto$GameStateOrBuilder.class
+com\mmo\GameClient$GameState.class
 com\mmo\grpc\AIEngineGrpc$AsyncService.class
 com\mmo\grpc\GameBridgeProto$GameState$1.class
 com\mmo\grpc\GameBridgeProto$BotScript$1.class
@@ -13,9 +15,12 @@ com\mmo\grpc\GameBridgeProto$GameState$Builder.class
 com\mmo\grpc\AIEngineGrpc$1.class
 com\mmo\grpc\GameBridgeProto$BotScript.class
 com\mmo\grpc\AIEngineGrpc$AIEngineMethodDescriptorSupplier.class
+com\mmo\GameClient$CharacterProfile.class
 com\mmo\grpc\AIEngineGrpc$3.class
+com\mmo\GameClient.class
 com\mmo\grpc\AIEngineGrpc$AIEngineBaseDescriptorSupplier.class
 com\mmo\grpc\AIEngineGrpc$AIEngineFutureStub.class
+com\mmo\Main.class
 com\mmo\grpc\GameBridgeProto$1.class
 com\mmo\grpc\AIEngineGrpc$AIEngineFileDescriptorSupplier.class
 com\mmo\grpc\GameBridgeProto.class

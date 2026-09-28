@@ -8,13 +8,14 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import com.badlogic.gdx.files.FileHandle;
 
-// NEW: Video imports
 import com.badlogic.gdx.video.VideoPlayer;
 import com.badlogic.gdx.video.VideoPlayerCreator;
 
@@ -23,17 +24,21 @@ import io.grpc.ManagedChannelBuilder;
 import com.mmo.grpc.AIEngineGrpc;
 import com.mmo.grpc.GameBridgeProto;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class GameClient extends ApplicationAdapter {
     
-    // --- STATE MACHINE ---
-    private enum GameState { INTRO, COMBAT }
-    private GameState currentState = GameState.INTRO;
+    // --- STATE MACHINE (Starts at Character Select now) ---
+    private enum GameState { CHARACTER_SELECT, INTRO, COMBAT }
+    private GameState currentState = GameState.CHARACTER_SELECT;
     
     private VideoPlayer videoPlayer;
     private boolean isVideoPlaying = false;
 
     private SpriteBatch batch;
     private ShapeRenderer shapeRenderer; 
+    private BitmapFont font;
     
     private Texture bgLayer1, bgLayer2, bgLayer3, bgLayer4;
     private GameCharacter king;
@@ -44,6 +49,42 @@ public class GameClient extends ApplicationAdapter {
     private final float WORLD_WIDTH = 1280f;
     private final float WORLD_HEIGHT = 720f;
 
+    // --- DYNAMIC CHARACTER REGISTRY ---
+    public static class CharacterProfile {
+        public String name;
+        public String idlePath;
+        public int idleFrames;
+        public String runPath;
+        public String attackPath;
+        public float startX, startY, scaleSize;
+        
+        public Texture previewTexture;
+        public TextureRegion previewRegion;
+
+        public CharacterProfile(String name, String idlePath, int idleFrames, String runPath, String attackPath, float startX, float startY, float scaleSize) {
+            this.name = name;
+            this.idlePath = idlePath;
+            this.idleFrames = idleFrames;
+            this.runPath = runPath;
+            this.attackPath = attackPath;
+            this.startX = startX;
+            this.startY = startY;
+            this.scaleSize = scaleSize;
+            
+            // Load and slice out the first frame for clean card preview
+            this.previewTexture = new Texture(Gdx.files.internal(idlePath));
+            TextureRegion[][] tmp = TextureRegion.split(previewTexture, previewTexture.getWidth() / idleFrames, previewTexture.getHeight());
+            this.previewRegion = tmp[0][0];
+        }
+
+        public void dispose() {
+            if (previewTexture != null) previewTexture.dispose();
+        }
+    }
+
+    private List<CharacterProfile> roster = new ArrayList<>();
+    private int selectedIndex = 0;
+
     private ManagedChannel channel;
     private AIEngineGrpc.AIEngineBlockingStub aiStub;
     private float networkTimer = 0f;
@@ -52,43 +93,29 @@ public class GameClient extends ApplicationAdapter {
     public void create() {
         batch = new SpriteBatch();
         shapeRenderer = new ShapeRenderer(); 
+        font = new BitmapFont(); 
         
         camera = new OrthographicCamera();
         viewport = new FitViewport(WORLD_WIDTH, WORLD_HEIGHT, camera);
         camera.position.set(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 0);
 
-        // --- LOAD VIDEO ---
-        try {
-            videoPlayer = VideoPlayerCreator.createVideoPlayer();
-            videoPlayer.play(Gdx.files.internal("assets/intro.webm"));
-            isVideoPlaying = true;
-            
-            // Auto-transition when the evil laugh finishes (Lambda fix)
-            videoPlayer.setOnCompletionListener(file -> transitionToCombat());
-            
-        } catch (Exception e) {
-            System.out.println("Warning: Video failed to load. Skipping straight to combat.");
-            transitionToCombat();
-        }
+        // --- POPULATE ROSTER (Teammates can easily add more characters here!) ---
+        roster.add(new CharacterProfile(
+            "King Nebuchadnezzar",
+            "assets/nebuchadnezar/Idle.png", 8,
+            "assets/nebuchadnezar/Run.png",
+            "assets/nebuchadnezar/Attack1.png",
+            30, 130, 150
+        ));
+        // roster.add(new CharacterProfile("New Hero", "assets/hero/Idle.png", 6, ...));
 
-        // --- LOAD ASSETS ---
+        // --- LOAD BACKGROUND ASSETS ---
         bgLayer1 = new Texture(Gdx.files.internal("assets/background/background.png"));
         bgLayer2 = new Texture(Gdx.files.internal("assets/background/background2.png"));
         bgLayer3 = new Texture(Gdx.files.internal("assets/background/background3.png"));
         bgLayer4 = new Texture(Gdx.files.internal("assets/background/background4.png"));
 
-        king = new GameCharacter(
-            "assets/nebuchadnezar/Idle.png", 8,
-            "assets/nebuchadnezar/Run.png", 8,
-            "assets/nebuchadnezar/Jump.png", 2,
-            "assets/nebuchadnezar/Attack1.png", 4,
-            "assets/nebuchadnezar/Attack2.png", 4,
-            "assets/nebuchadnezar/Attack3.png", 4,
-            "assets/nebuchadnezar/Take Hit - white silhouette.png", 4,
-            "assets/nebuchadnezar/Death.png", 4, 
-            30, 130, 150 
-        );
-
+        // Initialize Boss (Necromancer)
         boss = new GameCharacter(
             "assets/necromancer/Idle.png", 8, 
             "assets/necromancer/Run.png", 8,
@@ -97,7 +124,7 @@ public class GameClient extends ApplicationAdapter {
             "assets/necromancer/Attack2.png", 8,
             "assets/necromancer/Attack1.png", 8, 
             "assets/necromancer/Take hit.png", 3, 
-            "assets/necromancer/Death.png", 8,    
+            "assets/necromancer/Death.png", 7,    
             750, 19, 380 
         );
         boss.isFacingLeft = true;
@@ -108,6 +135,34 @@ public class GameClient extends ApplicationAdapter {
         System.out.println("Connecting to Python AI...");
         channel = ManagedChannelBuilder.forAddress("localhost", 50051).usePlaintext().build();
         aiStub = AIEngineGrpc.newBlockingStub(channel);
+    }
+
+    private void initializeSelectedPlayerAndStartVideo() {
+        CharacterProfile profile = roster.get(selectedIndex);
+        king = new GameCharacter(
+            profile.idlePath, profile.idleFrames,
+            profile.runPath, 8,
+            "assets/nebuchadnezar/Jump.png", 2,
+            profile.attackPath, 4,
+            profile.attackPath, 4,
+            profile.attackPath, 4,
+            "assets/nebuchadnezar/Take Hit - white silhouette.png", 4,
+            "assets/nebuchadnezar/Death.png", 6, 
+            profile.startX, profile.startY, profile.scaleSize 
+        );
+
+        currentState = GameState.INTRO;
+
+        // Start Intro Video
+        try {
+            videoPlayer = VideoPlayerCreator.createVideoPlayer();
+            videoPlayer.play(Gdx.files.internal("assets/intro.webm"));
+            isVideoPlaying = true;
+            videoPlayer.setOnCompletionListener(file -> transitionToCombat());
+        } catch (Exception e) {
+            System.out.println("Warning: Video failed to load. Skipping straight to Combat.");
+            transitionToCombat();
+        }
     }
 
     private void transitionToCombat() {
@@ -134,16 +189,78 @@ public class GameClient extends ApplicationAdapter {
         camera.update();
         batch.setProjectionMatrix(camera.combined);
 
-        // State Machine Switch
-        if (currentState == GameState.INTRO) {
+        if (currentState == GameState.CHARACTER_SELECT) {
+            renderCharacterSelect();
+        } else if (currentState == GameState.INTRO) {
             renderIntro();
         } else {
             renderCombat(deltaTime);
         }
     }
 
+    private void renderCharacterSelect() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT) || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
+            selectedIndex = (selectedIndex - 1 + roster.size()) % roster.size();
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT) || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
+            selectedIndex = (selectedIndex + 1) % roster.size();
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+            initializeSelectedPlayerAndStartVideo();
+            return;
+        }
+
+        // Draw Menu Background Cards
+        shapeRenderer.setProjectionMatrix(camera.combined);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        
+        shapeRenderer.setColor(0.05f, 0.05f, 0.1f, 1f);
+        shapeRenderer.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+        
+        float cardWidth = 320f;
+        float cardHeight = 440f;
+        float startX = (WORLD_WIDTH - (roster.size() * (cardWidth + 60f))) / 2f;
+        
+        for (int i = 0; i < roster.size(); i++) {
+            float cX = startX + (i * (cardWidth + 60f));
+            float cY = (WORLD_HEIGHT - cardHeight) / 2f - 20f;
+            
+            if (i == selectedIndex) {
+                shapeRenderer.setColor(1.0f, 0.8f, 0.1f, 1f); // Active Gold Highlight
+                shapeRenderer.rect(cX - 6, cY - 6, cardWidth + 12, cardHeight + 12);
+            }
+            
+            shapeRenderer.setColor(0.15f, 0.15f, 0.25f, 1f);
+            shapeRenderer.rect(cX, cY, cardWidth, cardHeight);
+        }
+        shapeRenderer.end();
+
+        // Draw Text & Sliced Preview Sprites
+        batch.begin();
+        font.getData().setScale(2.2f);
+        font.draw(batch, "SELECT YOUR CHAMPION", WORLD_WIDTH / 2f - 240f, WORLD_HEIGHT - 70f);
+        
+        font.getData().setScale(1.2f);
+        font.draw(batch, "Use A/D to Browse | Press ENTER to Watch Intro & Battle", WORLD_WIDTH / 2f - 280f, WORLD_HEIGHT - 120f);
+
+        for (int i = 0; i < roster.size(); i++) {
+            float cX = startX + (i * (cardWidth + 60f));
+            float cY = (WORLD_HEIGHT - cardHeight) / 2f - 20f;
+            
+            CharacterProfile p = roster.get(i);
+            
+            // Draw Character Name
+            font.getData().setScale(1.4f);
+            font.draw(batch, p.name, cX + 25f, cY + cardHeight - 35f);
+
+            // Draw Clean Sliced Preview Sprite Frame Centered on Card
+            float previewSize = 180f;
+            batch.draw(p.previewRegion, cX + (cardWidth - previewSize) / 2f, cY + 100f, previewSize, previewSize);
+        }
+        batch.end();
+    }
+
     private void renderIntro() {
-        // Allow the player to skip the cinematic by pressing Space or Escape
         if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) || Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
             transitionToCombat();
             return;
@@ -151,14 +268,11 @@ public class GameClient extends ApplicationAdapter {
 
         if (isVideoPlaying && videoPlayer != null) {
             videoPlayer.update();
-            
-            // GUARD: If the video completed during the update call, stop here immediately
             if (videoPlayer == null || currentState != GameState.INTRO) return;
             
             Texture frame = videoPlayer.getTexture();
             if (frame != null) {
                 batch.begin();
-                // Drawing to WORLD dimensions ensures the FitViewport perfectly letterboxes the video
                 batch.draw(frame, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
                 batch.end();
             }
@@ -294,12 +408,14 @@ public class GameClient extends ApplicationAdapter {
     public void dispose() {
         batch.dispose();
         shapeRenderer.dispose();
+        font.dispose();
         bgLayer1.dispose();
         bgLayer2.dispose();
         bgLayer3.dispose();
         bgLayer4.dispose();
-        king.dispose();
-        boss.dispose();
+        for (CharacterProfile p : roster) p.dispose();
+        if (king != null) king.dispose();
+        if (boss != null) boss.dispose();
         if (videoPlayer != null) videoPlayer.dispose();
         if (channel != null) channel.shutdown();
     }
