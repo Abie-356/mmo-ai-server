@@ -12,6 +12,11 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
+import com.badlogic.gdx.files.FileHandle;
+
+// NEW: Video imports
+import com.badlogic.gdx.video.VideoPlayer;
+import com.badlogic.gdx.video.VideoPlayerCreator;
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -19,6 +24,14 @@ import com.mmo.grpc.AIEngineGrpc;
 import com.mmo.grpc.GameBridgeProto;
 
 public class GameClient extends ApplicationAdapter {
+    
+    // --- STATE MACHINE ---
+    private enum GameState { INTRO, COMBAT }
+    private GameState currentState = GameState.INTRO;
+    
+    private VideoPlayer videoPlayer;
+    private boolean isVideoPlaying = false;
+
     private SpriteBatch batch;
     private ShapeRenderer shapeRenderer; 
     
@@ -44,6 +57,21 @@ public class GameClient extends ApplicationAdapter {
         viewport = new FitViewport(WORLD_WIDTH, WORLD_HEIGHT, camera);
         camera.position.set(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 0);
 
+        // --- LOAD VIDEO ---
+        try {
+            videoPlayer = VideoPlayerCreator.createVideoPlayer();
+            videoPlayer.play(Gdx.files.internal("assets/intro.webm"));
+            isVideoPlaying = true;
+            
+            // Auto-transition when the evil laugh finishes (Lambda fix)
+            videoPlayer.setOnCompletionListener(file -> transitionToCombat());
+            
+        } catch (Exception e) {
+            System.out.println("Warning: Video failed to load. Skipping straight to combat.");
+            transitionToCombat();
+        }
+
+        // --- LOAD ASSETS ---
         bgLayer1 = new Texture(Gdx.files.internal("assets/background/background.png"));
         bgLayer2 = new Texture(Gdx.files.internal("assets/background/background2.png"));
         bgLayer3 = new Texture(Gdx.files.internal("assets/background/background3.png"));
@@ -73,13 +101,22 @@ public class GameClient extends ApplicationAdapter {
             750, 19, 380 
         );
         boss.isFacingLeft = true;
-        
         boss.maxHealth = 500f;
         boss.currentHealth = 500f;
+        boss.displayedHealth = 500f;
 
         System.out.println("Connecting to Python AI...");
         channel = ManagedChannelBuilder.forAddress("localhost", 50051).usePlaintext().build();
         aiStub = AIEngineGrpc.newBlockingStub(channel);
+    }
+
+    private void transitionToCombat() {
+        currentState = GameState.COMBAT;
+        isVideoPlaying = false;
+        if (videoPlayer != null) {
+            videoPlayer.dispose();
+            videoPlayer = null;
+        }
     }
 
     @Override
@@ -91,6 +128,44 @@ public class GameClient extends ApplicationAdapter {
     public void render() {
         float deltaTime = Gdx.graphics.getDeltaTime();
         
+        Gdx.gl.glClearColor(0, 0, 0, 1);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+        camera.update();
+        batch.setProjectionMatrix(camera.combined);
+
+        // State Machine Switch
+        if (currentState == GameState.INTRO) {
+            renderIntro();
+        } else {
+            renderCombat(deltaTime);
+        }
+    }
+
+    private void renderIntro() {
+        // Allow the player to skip the cinematic by pressing Space or Escape
+        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) || Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+            transitionToCombat();
+            return;
+        }
+
+        if (isVideoPlaying && videoPlayer != null) {
+            videoPlayer.update();
+            
+            // GUARD: If the video completed during the update call, stop here immediately
+            if (videoPlayer == null || currentState != GameState.INTRO) return;
+            
+            Texture frame = videoPlayer.getTexture();
+            if (frame != null) {
+                batch.begin();
+                // Drawing to WORLD dimensions ensures the FitViewport perfectly letterboxes the video
+                batch.draw(frame, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+                batch.end();
+            }
+        }
+    }
+
+    private void renderCombat(float deltaTime) {
         // --- 1. Player Input & Boundaries ---
         king.isMoving = false; 
         if (!king.isDead) {
@@ -112,7 +187,7 @@ public class GameClient extends ApplicationAdapter {
         // --- 2. Combat & Hit Detection ---
         boolean isKingSwinging = king.isAttacking || king.isSecondaryAttacking || king.isSuperAttacking;
         if (isKingSwinging && !king.hasDealtDamage && !king.isDead && !boss.isDead) {
-            if (king.getHitbox().overlaps(boss.getHitbox())) {
+            if (king.getHitbox().overlaps(boss.getHurtbox())) {
                 king.hasDealtDamage = true; 
                 if (king.isSuperAttacking) boss.takeDamage(35f);
                 else boss.takeDamage(15f);
@@ -122,8 +197,8 @@ public class GameClient extends ApplicationAdapter {
         boolean isBossSwinging = boss.isAttacking || boss.isSecondaryAttacking;
         if (isBossSwinging && !boss.hasDealtDamage && !boss.isDead && !king.isDead) {
             if (king.isParrying) {
-                boss.hasDealtDamage = true; // Parry negates damage
-            } else if (boss.getHitbox().overlaps(king.getHitbox())) {
+                boss.hasDealtDamage = true; 
+            } else if (boss.getHitbox().overlaps(king.getHurtbox())) {
                 boss.hasDealtDamage = true; 
                 king.takeDamage(10f); 
             }
@@ -135,8 +210,6 @@ public class GameClient extends ApplicationAdapter {
             networkTimer = 0f;
             try {
                 String currentAction = "Idle";
-                
-                // Alert Python if King is dead so the Boss stops swinging
                 if (king.isDead) currentAction = "Dead"; 
                 else if (king.isParrying) currentAction = "Parrying";
                 else if (king.isSuperAttacking) currentAction = "SuperAttacking";
@@ -156,12 +229,12 @@ public class GameClient extends ApplicationAdapter {
                 else if (aiCommand.contains("MOVE_RIGHT")) { boss.isMoving = true; boss.isFacingLeft = false; } 
                 else if (aiCommand.contains("SECONDARY_ATTACK")) { 
                     boss.isMoving = false; 
-                    boss.isFacingLeft = (king.x < boss.x); // Force face toward King
+                    boss.isFacingLeft = (king.x < boss.x); 
                     boss.secondaryAttack(); 
                 }
                 else if (aiCommand.contains("ATTACK")) { 
                     boss.isMoving = false; 
-                    boss.isFacingLeft = (king.x < boss.x); // Force face toward King
+                    boss.isFacingLeft = (king.x < boss.x); 
                     boss.attack(); 
                 }
                 else boss.isMoving = false;
@@ -171,7 +244,6 @@ public class GameClient extends ApplicationAdapter {
             } catch (Exception e) {}
         }
 
-        // Smooth Boss Movement Application (Runs at 60fps)
         if (boss.isMoving && !boss.isDead && !boss.isAttacking && !boss.isSecondaryAttacking) {
             float bossSpeed = 160f; 
             if (boss.isFacingLeft) boss.x -= bossSpeed * deltaTime;
@@ -179,12 +251,6 @@ public class GameClient extends ApplicationAdapter {
         }
 
         // --- 4. Visual Rendering ---
-        Gdx.gl.glClearColor(0, 0, 0, 1);
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-
-        camera.update();
-        batch.setProjectionMatrix(camera.combined);
-
         batch.begin();
         batch.draw(bgLayer1, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         batch.draw(bgLayer2, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
@@ -196,19 +262,31 @@ public class GameClient extends ApplicationAdapter {
         batch.draw(bgLayer4, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         batch.end();
 
+        // --- 5. Health Bar Rendering ---
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
         if (!king.isDead) {
-            shapeRenderer.setColor(0.2f, 0.8f, 0.2f, 1);
-            shapeRenderer.rect(king.x + (king.size * 0.2f), king.y + (king.size * 0.55f), 100f * (king.currentHealth / king.maxHealth), 8);
+            float kX = king.x + (king.size * 0.2f);
+            float kY = king.y + (king.size * 0.55f);
+            shapeRenderer.setColor(0f, 0f, 0f, 1f);
+            shapeRenderer.rect(kX - 2, kY - 2, 104f, 12f);
+            shapeRenderer.setColor(1.0f, 0.8f, 0.1f, 1f);
+            shapeRenderer.rect(kX, kY, 100f * (king.displayedHealth / king.maxHealth), 8f);
+            shapeRenderer.setColor(0.2f, 0.8f, 0.2f, 1f);
+            shapeRenderer.rect(kX, kY, 100f * (king.currentHealth / king.maxHealth), 8f);
         }
         
         if (!boss.isDead) {
-            shapeRenderer.setColor(0.9f, 0.1f, 0.1f, 1);
-            shapeRenderer.rect(boss.x + (boss.size * 0.35f), boss.y + (boss.size * 0.55f), 150f * (boss.currentHealth / boss.maxHealth), 12);
+            float bX = boss.x + (boss.size * 0.35f);
+            float bY = boss.y + (boss.size * 0.55f);
+            shapeRenderer.setColor(0f, 0f, 0f, 1f);
+            shapeRenderer.rect(bX - 2, bY - 2, 154f, 16f);
+            shapeRenderer.setColor(1.0f, 0.8f, 0.1f, 1f);
+            shapeRenderer.rect(bX, bY, 150f * (boss.displayedHealth / boss.maxHealth), 12f);
+            shapeRenderer.setColor(0.9f, 0.1f, 0.1f, 1f);
+            shapeRenderer.rect(bX, bY, 150f * (boss.currentHealth / boss.maxHealth), 12f);
         }
-        
         shapeRenderer.end();
     }
 
@@ -222,6 +300,7 @@ public class GameClient extends ApplicationAdapter {
         bgLayer4.dispose();
         king.dispose();
         boss.dispose();
+        if (videoPlayer != null) videoPlayer.dispose();
         if (channel != null) channel.shutdown();
     }
 

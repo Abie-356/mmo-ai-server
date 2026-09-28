@@ -5,6 +5,18 @@
   <version>1.0-SNAPSHOT</version>
 
   <dependencies>
+    <!-- LibGDX Video Extension -->
+    <dependency>
+      <groupId>com.badlogicgames.gdx-video</groupId>
+      <artifactId>gdx-video</artifactId>
+      <version>1.3.4</version>
+    </dependency>
+    <dependency>
+      <groupId>com.badlogicgames.gdx-video</groupId>
+      <artifactId>gdx-video-lwjgl3</artifactId>
+      <version>1.3.4</version>
+    </dependency>
+    
     <dependency>
       <groupId>io.grpc</groupId>
       <artifactId>grpc-netty-shaded</artifactId>
@@ -25,26 +37,27 @@
       <artifactId>javax.annotation-api</artifactId>
       <version>1.3.2</version>
     </dependency>
-    <!-- LibGDX Core Engine -->
+    
+    <!-- LibGDX Core Engine (Updated to 1.13.0 to match gdx-video 1.3.4) -->
     <dependency>
-        <groupId>com.badlogicgames.gdx</groupId>
-        <artifactId>gdx</artifactId>
-        <version>1.12.1</version>
+      <groupId>com.badlogicgames.gdx</groupId>
+      <artifactId>gdx</artifactId>
+      <version>1.13.0</version>
     </dependency>
     
     <!-- LibGDX Desktop Backend (LWJGL3) -->
     <dependency>
-        <groupId>com.badlogicgames.gdx</groupId>
-        <artifactId>gdx-backend-lwjgl3</artifactId>
-        <version>1.12.1</version>
+      <groupId>com.badlogicgames.gdx</groupId>
+      <artifactId>gdx-backend-lwjgl3</artifactId>
+      <version>1.13.0</version>
     </dependency>
     
     <!-- LibGDX Native Libraries for Windows/Mac/Linux -->
     <dependency>
-        <groupId>com.badlogicgames.gdx</groupId>
-        <artifactId>gdx-platform</artifactId>
-        <version>1.12.1</version>
-        <classifier>natives-desktop</classifier>
+      <groupId>com.badlogicgames.gdx</groupId>
+      <artifactId>gdx-platform</artifactId>
+      <version>1.13.0</version>
+      <classifier>natives-desktop</classifier>
     </dependency>
   </dependencies>
 
@@ -65,7 +78,6 @@
           <protocArtifact>com.google.protobuf:protoc:3.25.1:exe:${os.detected.classifier}</protocArtifact>
           <pluginId>grpc-java</pluginId>
           <pluginArtifact>io.grpc:protoc-gen-grpc-java:1.62.2:exe:${os.detected.classifier}</pluginArtifact>
-          <!-- This tells Maven where to find the bridge file -->
           <protoSourceRoot>proto-bridge</protoSourceRoot>
         </configuration>
         <executions>

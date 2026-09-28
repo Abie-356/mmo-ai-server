@@ -20,24 +20,17 @@ class AIEngineServicer(game_bridge_pb2_grpc.AIEngineServicer):
         abs_distance = abs(center_distance)
         
         command = "IDLE"
-        attack_range = 200.0 # Tighter range so he has to get close!
+        attack_range = 200.0 # Tighter range so he has to get close
 
-        # 2. Evade Parries
-        if action == "Parrying":
-            if center_distance < 0:
-                command = "MOVE_RIGHT"
-            else:
-                command = "MOVE_LEFT"
-                
-        # 3. Dynamic Combat (Smart Attacks)
-        elif abs_distance <= attack_range:
+        # 2. Dynamic Combat (Smart Attacks) - No longer evading parries!
+        if abs_distance <= attack_range:
             move_roll = random.random()
             if move_roll < 0.5:
                 command = "ATTACK"
             else:
                 command = "SECONDARY_ATTACK"
                 
-        # 4. Pursuit & Tactical Jumping
+        # 3. Pursuit & Tactical Jumping
         else:
             if center_distance < 0:
                 command = "MOVE_LEFT"

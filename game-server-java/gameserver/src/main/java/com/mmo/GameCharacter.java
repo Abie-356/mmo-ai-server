@@ -41,8 +41,16 @@ public class GameCharacter {
     public final float SUPER_COOLDOWN = 3.0f;
     public final float PARRY_WINDOW = 0.3f; 
 
+    public float parryCooldownRemaining = 0f;
+    public final float PARRY_COOLDOWN = 2.0f;
+    
     public float maxHealth = 100f;
     public float currentHealth = 100f;
+    public float displayedHealth = 100f; // NEW: Tracks the visual yellow bar
+
+   
+    
+
 
     public GameCharacter(
             String idlePath, int idleCols,
@@ -116,9 +124,11 @@ public class GameCharacter {
     }
 
     public void parry() {
-        if (!isParrying && !isAttacking && !isSecondaryAttacking && !isSuperAttacking && !isDead) {
+        // Added parryCooldownRemaining <= 0 to the condition
+        if (!isParrying && !isAttacking && !isSecondaryAttacking && !isSuperAttacking && !isDead && parryCooldownRemaining <= 0) {
             isParrying = true;
             parryTimer = 0f;
+            parryCooldownRemaining = PARRY_COOLDOWN; // Lock it down for 2 seconds
         }
     }
 
@@ -136,13 +146,20 @@ public class GameCharacter {
     }
 
     // Dynamic Hitbox: Stretches forward when attacking!
-    // Dynamic Hitbox: Stretches forward when attacking!
-    public Rectangle getHitbox() {
+    // The physical body that takes damage (Never stretches)
+    public Rectangle getHurtbox() {
         float paddingX = size * 0.35f; 
         float paddingY = size * 0.1f;  
+        return new Rectangle(x + paddingX, y + paddingY, size - (paddingX * 2), size - (paddingY * 2));
+    }
+
+    // The weapon reach that deals damage (Stretches when attacking)
+    public Rectangle getHitbox() {
+        float paddingX = size * 0.35f; 
+        float paddingY = size * 0.1f;   
         
         if (isAttacking || isSecondaryAttacking || isSuperAttacking) {
-            float weaponReach = size * 0.15f; // REDUCED from 0.4f to 0.15f
+            float weaponReach = (size > 200) ? 160f : 0f;
             if (isFacingLeft) {
                 return new Rectangle((x + paddingX) - weaponReach, y + paddingY, (size - (paddingX * 2)) + weaponReach, size - (paddingY * 2));
             } else {
@@ -150,12 +167,20 @@ public class GameCharacter {
             }
         }
         
-        return new Rectangle(x + paddingX, y + paddingY, size - (paddingX * 2), size - (paddingY * 2));
+        return getHurtbox(); // Default to normal body size if not attacking
     }
 
     public void render(SpriteBatch batch, float deltaTime) {
         stateTime += deltaTime;
+        if (displayedHealth < currentHealth) displayedHealth = currentHealth; // Fixes the start-up bug instantly
+        
+        if (displayedHealth > currentHealth) {
+            displayedHealth -= (displayedHealth - currentHealth) * 5f * deltaTime;
+            if (displayedHealth - currentHealth < 0.5f) displayedHealth = currentHealth;
+        }
         if (superCooldownRemaining > 0) superCooldownRemaining -= deltaTime;
+
+        if (parryCooldownRemaining > 0) parryCooldownRemaining -= deltaTime;
         
         // Always apply gravity so corpses fall to the floor
         if (isJumping || y > floorY) {
