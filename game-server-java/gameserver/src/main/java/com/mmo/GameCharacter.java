@@ -1,224 +1,210 @@
 package com.mmo;
 
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.badlogic.gdx.math.Rectangle;
+import java.util.ArrayList;
 
 public class GameCharacter {
-    // Animations
-    public Animation idleAnim, runAnim, jumpAnim;
-    public Animation attack1Anim, attack2Anim, attack3Anim;
-    public Animation hitAnim, deathAnim;
+    private ArrayList<Texture> textures = new ArrayList<>();
+    private Animation<TextureRegion> idleAnim, runAnim, jumpAnim, attackAnim, attack2Anim, superAnim, parryAnim, deathAnim;
     
-    // Textures (kept to dispose of them properly later and prevent memory leaks)
-    private Texture tIdle, tRun, tJump, tAtk1, tAtk2, tAtk3, tHit, tDeath;
-
-    public float stateTime;
+    public float stateTime = 0f;
+    public float attackTimer = 0f;
+    public float superTimer = 0f;
+    public float parryTimer = 0f;
     
-    // Public variables accessed by GameClient & Python AI
-    public float x, y, size, floorY;
-    public float speed = 200f;
-    public float maxHealth = 100f;
-    public float currentHealth = 100f;
+    public float x, y, size;
     
-    // Combat and Movement States
-    public boolean isFacingLeft = false;
+    // --- State Variables ---
     public boolean isMoving = false;
+    public boolean isFacingLeft = false;
+    public boolean isJumping = false;
+    public boolean hasDealtDamage = false; 
+    public boolean isDead = false;
+    
     public boolean isAttacking = false;
     public boolean isSecondaryAttacking = false;
     public boolean isSuperAttacking = false;
     public boolean isParrying = false;
-    public boolean isDead = false;
-    public boolean hasDealtDamage = false;
     
-    // Jump physics
-    private float verticalVelocity = 0f;
-    private final float GRAVITY = -900f;
-    private final float JUMP_POWER = 400f;
-    private boolean isJumping = false;
+    public float speed = 300f; 
+    public float yVelocity = 0f;
+    public float gravity = -1800f; 
+    public float jumpStrength = 750f; 
+    public float floorY; 
+    
+    public float superCooldownRemaining = 0f;
+    public final float SUPER_COOLDOWN = 3.0f;
+    public final float PARRY_WINDOW = 0.3f; 
 
-    // The giant constructor that accepts all 8 animation files (Required by GameClient)
+    public float maxHealth = 100f;
+    public float currentHealth = 100f;
+
     public GameCharacter(
-        String idlePath, int idleCols,
-        String runPath, int runCols,
-        String jumpPath, int jumpCols,
-        String atk1Path, int atk1Cols,
-        String atk2Path, int atk2Cols,
-        String atk3Path, int atk3Cols,
-        String hitPath, int hitCols,
-        String deathPath, int deathCols,
-        float startX, float startY, float size) {
+            String idlePath, int idleCols,
+            String runPath, int runCols,
+            String jumpPath, int jumpCols,
+            String attackPath, int attackCols,
+            String attack2Path, int attack2Cols,
+            String superPath, int superCols,
+            String parryPath, int parryCols,
+            String deathPath, int deathCols, // Added Death Animation
+            float startX, float startY, float size) {
         
         this.x = startX;
         this.y = startY;
         this.floorY = startY;
         this.size = size;
-        
-        // Load textures and create animations
-        tIdle = new Texture(Gdx.files.internal(idlePath));
-        idleAnim = createAnim(tIdle, idleCols, 1);
-        
-        tRun = new Texture(Gdx.files.internal(runPath));
-        runAnim = createAnim(tRun, runCols, 1);
-        
-        tJump = new Texture(Gdx.files.internal(jumpPath));
-        jumpAnim = createAnim(tJump, jumpCols, 1);
-        
-        tAtk1 = new Texture(Gdx.files.internal(atk1Path));
-        attack1Anim = createAnim(tAtk1, atk1Cols, 1);
-        
-        tAtk2 = new Texture(Gdx.files.internal(atk2Path));
-        attack2Anim = createAnim(tAtk2, atk2Cols, 1);
-        
-        tAtk3 = new Texture(Gdx.files.internal(atk3Path));
-        attack3Anim = createAnim(tAtk3, atk3Cols, 1);
-        
-        tHit = new Texture(Gdx.files.internal(hitPath));
-        hitAnim = createAnim(tHit, hitCols, 1);
-        
-        tDeath = new Texture(Gdx.files.internal(deathPath));
-        deathAnim = createAnim(tDeath, deathCols, 1);
+
+        this.idleAnim = createAnimation(idlePath, idleCols, 0.1f);
+        this.runAnim = createAnimation(runPath, runCols, 0.1f);
+        this.jumpAnim = createAnimation(jumpPath, jumpCols, 0.1f);
+        this.attackAnim = createAnimation(attackPath, attackCols, 0.08f);
+        this.attack2Anim = createAnimation(attack2Path, attack2Cols, 0.08f);
+        this.superAnim = createAnimation(superPath, superCols, 0.15f);
+        this.parryAnim = createAnimation(parryPath, parryCols, 0.075f);
+        this.deathAnim = createAnimation(deathPath, deathCols, 0.15f);
     }
 
-    // Helper method to slice sprite sheets
-    private Animation createAnim(Texture sheet, int cols, int rows) {
+    private Animation<TextureRegion> createAnimation(String path, int cols, float frameDuration) {
+        return createAnimation(path, cols, 1, frameDuration); 
+    }
+
+    private Animation<TextureRegion> createAnimation(String path, int cols, int rows, float frameDuration) {
+        Texture sheet = new Texture(Gdx.files.internal(path));
+        textures.add(sheet);
         TextureRegion[][] tmp = TextureRegion.split(sheet, sheet.getWidth() / cols, sheet.getHeight() / rows);
-        TextureRegion[] frames = new TextureRegion[cols * rows];
-        int index = 0;
-        for (int i = 0; i < rows; i++) {
-            for (int j = 0; j < cols; j++) {
-                frames[index++] = tmp[i][j];
-            }
-        }
-        return new Animation(0.1f, new com.badlogic.gdx.utils.Array(frames));
+        TextureRegion[] frames = new TextureRegion[cols];
+        for (int i = 0; i < cols; i++) frames[i] = tmp[0][i]; 
+        return new Animation<TextureRegion>(frameDuration, frames);
     }
-    
-    // --- COMBAT & MOVEMENT METHODS ---
+
     public void jump() {
-        if (!isJumping && !isDead) {
-            verticalVelocity = JUMP_POWER;
+        if (!isJumping && !isSuperAttacking && !isParrying && !isDead) {
             isJumping = true;
+            yVelocity = jumpStrength;
         }
     }
-    
+
     public void attack() {
-        if (!isAttacking && !isSecondaryAttacking && !isSuperAttacking && !isDead) {
+        if (!isAttacking && !isSecondaryAttacking && !isSuperAttacking && !isParrying && !isDead) {
             isAttacking = true;
-            stateTime = 0f;
-            hasDealtDamage = false;
+            attackTimer = 0f; 
+            hasDealtDamage = false; 
         }
     }
-    
+
     public void secondaryAttack() {
-        if (!isAttacking && !isSecondaryAttacking && !isSuperAttacking && !isDead) {
+        if (!isAttacking && !isSecondaryAttacking && !isSuperAttacking && !isParrying && !isDead) {
             isSecondaryAttacking = true;
-            stateTime = 0f;
-            hasDealtDamage = false;
+            attackTimer = 0f; 
+            hasDealtDamage = false; 
         }
     }
-    
+
     public void superAttack() {
-        if (!isAttacking && !isSecondaryAttacking && !isSuperAttacking && !isDead) {
+        if (!isSuperAttacking && !isAttacking && !isSecondaryAttacking && !isParrying && superCooldownRemaining <= 0 && !isDead) {
             isSuperAttacking = true;
-            stateTime = 0f;
-            hasDealtDamage = false;
+            superTimer = 0f;
+            superCooldownRemaining = SUPER_COOLDOWN;
+            hasDealtDamage = false; 
         }
     }
-    
+
     public void parry() {
-        if (!isParrying && !isDead) {
+        if (!isParrying && !isAttacking && !isSecondaryAttacking && !isSuperAttacking && !isDead) {
             isParrying = true;
-            stateTime = 0f;
+            parryTimer = 0f;
         }
     }
-    
+
     public void takeDamage(float amount) {
         if (isDead) return;
         currentHealth -= amount;
         if (currentHealth <= 0) {
             currentHealth = 0;
             isDead = true;
-            stateTime = 0f;
+            stateTime = 0f; // Reset state time so death anim plays from frame 1
+        } else {
+            isParrying = true; 
+            parryTimer = 0f;
         }
     }
-    
+
+    // Dynamic Hitbox: Stretches forward when attacking!
+    // Dynamic Hitbox: Stretches forward when attacking!
     public Rectangle getHitbox() {
-        // Shrink the invisible collision box to the center 30% of the sprite
-        float hitboxWidth = size * 0.3f;
-        float hitboxHeight = size * 0.8f;
-        float offsetX = x + (size * 0.35f); 
+        float paddingX = size * 0.35f; 
+        float paddingY = size * 0.1f;  
         
-        return new Rectangle(offsetX, y, hitboxWidth, hitboxHeight);
-    }
-    
-    // --- RENDERING & PHYSICS ---
-    public void render(SpriteBatch batch, float deltaTime) {
-        stateTime += deltaTime;
-        
-        // Handle Gravity
-        if (isJumping) {
-            y += verticalVelocity * deltaTime;
-            verticalVelocity += GRAVITY * deltaTime;
-            if (y <= floorY) {
-                y = floorY;
-                isJumping = false;
-                verticalVelocity = 0;
+        if (isAttacking || isSecondaryAttacking || isSuperAttacking) {
+            float weaponReach = size * 0.15f; // REDUCED from 0.4f to 0.15f
+            if (isFacingLeft) {
+                return new Rectangle((x + paddingX) - weaponReach, y + paddingY, (size - (paddingX * 2)) + weaponReach, size - (paddingY * 2));
+            } else {
+                return new Rectangle(x + paddingX, y + paddingY, (size - (paddingX * 2)) + weaponReach, size - (paddingY * 2));
             }
         }
         
-        // Determine which animation to play based on current state priority
-        Animation currentAnim = idleAnim;
-        boolean looping = true;
-        
-        if (isDead) {
-            currentAnim = deathAnim;
-            looping = false;
-        } else if (isParrying) {
-            currentAnim = hitAnim; // Reuse hit animation for parry visual
-            if (currentAnim.isAnimationFinished(stateTime)) isParrying = false;
-        } else if (isAttacking) {
-            currentAnim = attack1Anim;
-            looping = false;
-            if (currentAnim.isAnimationFinished(stateTime)) isAttacking = false;
-        } else if (isSecondaryAttacking) {
-            currentAnim = attack2Anim;
-            looping = false;
-            if (currentAnim.isAnimationFinished(stateTime)) isSecondaryAttacking = false;
-        } else if (isSuperAttacking) {
-            currentAnim = attack3Anim;
-            looping = false;
-            if (currentAnim.isAnimationFinished(stateTime)) isSuperAttacking = false;
-        } else if (isJumping) {
-            currentAnim = jumpAnim;
-        } else if (isMoving) {
-            currentAnim = runAnim;
-        }
-        
-        TextureRegion frame = (TextureRegion) currentAnim.getKeyFrame(stateTime, looping);
-        
-        // Flip the sprite if facing left
-        float drawX = x;
-        float drawWidth = size;
-        if (isFacingLeft) {
-            drawX = x + size;
-            drawWidth = -size;
-        }
-        
-        batch.draw(frame, drawX, y, drawWidth, size);
+        return new Rectangle(x + paddingX, y + paddingY, size - (paddingX * 2), size - (paddingY * 2));
     }
-    
-    // Cleanup memory when game closes
+
+    public void render(SpriteBatch batch, float deltaTime) {
+        stateTime += deltaTime;
+        if (superCooldownRemaining > 0) superCooldownRemaining -= deltaTime;
+        
+        // Always apply gravity so corpses fall to the floor
+        if (isJumping || y > floorY) {
+            yVelocity += gravity * deltaTime;
+            y += yVelocity * deltaTime;
+            if (y <= floorY) {
+                y = floorY;
+                isJumping = false;
+                yVelocity = 0f;
+            }
+        }
+
+        if (isDead) {
+            TextureRegion currentFrame = deathAnim.getKeyFrame(stateTime, false); // false = stop on final frame
+            if (currentFrame.isFlipX() != isFacingLeft) currentFrame.flip(true, false);
+            batch.draw(currentFrame, x, y, size, size);
+            return; // Skip living logic
+        }
+
+        if (isAttacking || isSecondaryAttacking) {
+            attackTimer += deltaTime;
+            if (isAttacking && attackAnim.isAnimationFinished(attackTimer)) isAttacking = false;
+            if (isSecondaryAttacking && attack2Anim.isAnimationFinished(attackTimer)) isSecondaryAttacking = false;
+        }
+
+        if (isSuperAttacking) {
+            superTimer += deltaTime;
+            if (superAnim.isAnimationFinished(superTimer)) isSuperAttacking = false;
+        }
+
+        if (isParrying) {
+            parryTimer += deltaTime;
+            if (parryTimer >= PARRY_WINDOW) isParrying = false;
+        }
+
+        TextureRegion currentFrame;
+        if (isParrying) currentFrame = parryAnim.getKeyFrame(parryTimer, false);
+        else if (isSuperAttacking) currentFrame = superAnim.getKeyFrame(superTimer, false);
+        else if (isAttacking) currentFrame = attackAnim.getKeyFrame(attackTimer, false);
+        else if (isSecondaryAttacking) currentFrame = attack2Anim.getKeyFrame(attackTimer, false);
+        else if (isJumping) currentFrame = jumpAnim.getKeyFrame(stateTime, true);
+        else if (isMoving) currentFrame = runAnim.getKeyFrame(stateTime, true);
+        else currentFrame = idleAnim.getKeyFrame(stateTime, true);
+        
+        if (currentFrame.isFlipX() != isFacingLeft) currentFrame.flip(true, false);
+        batch.draw(currentFrame, x, y, size, size);
+    }
+
     public void dispose() {
-        tIdle.dispose();
-        tRun.dispose();
-        tJump.dispose();
-        tAtk1.dispose();
-        tAtk2.dispose();
-        tAtk3.dispose();
-        tHit.dispose();
-        tDeath.dispose();
+        for (Texture t : textures) t.dispose();
     }
 }
