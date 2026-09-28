@@ -12,8 +12,6 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
-import java.util.ArrayList;
-import java.util.Iterator;
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -24,17 +22,9 @@ public class GameClient extends ApplicationAdapter {
     private SpriteBatch batch;
     private ShapeRenderer shapeRenderer; 
     
-    // Backgrounds & Boss
     private Texture bgLayer1, bgLayer2, bgLayer3, bgLayer4;
+    private GameCharacter king;
     private GameCharacter boss;
-
-    // --- TEAMMATE CODE (UNTOUCHED) ---
-    private GameCharacter king; 
-
-    // --- YOUR SEPARATE IRONEYE CODE ---
-    private GameCharacter ironeye;
-    private Texture ironeyeArrowTexture;
-    private ArrayList ironeyeArrows;
 
     private OrthographicCamera camera;
     private Viewport viewport;
@@ -59,7 +49,6 @@ public class GameClient extends ApplicationAdapter {
         bgLayer3 = new Texture(Gdx.files.internal("assets/background/background3.png"));
         bgLayer4 = new Texture(Gdx.files.internal("assets/background/background4.png"));
 
-        // 1. Teammate's default character (Kept safe for git)
         king = new GameCharacter(
             "assets/nebuchadnezar/Idle.png", 8,
             "assets/nebuchadnezar/Run.png", 8,
@@ -69,11 +58,8 @@ public class GameClient extends ApplicationAdapter {
             "assets/nebuchadnezar/Attack3.png", 4,
             "assets/nebuchadnezar/Take Hit - white silhouette.png", 4,
             "assets/nebuchadnezar/Death.png", 4, 
-            30f, 130f, 150f 
+            30, 130, 150 
         );
-
-        // 2. Your separate Ironeye character initialization function
-        initIronEyeCharacter();
 
         boss = new GameCharacter(
             "assets/necromancer/Idle.png", 8, 
@@ -87,29 +73,13 @@ public class GameClient extends ApplicationAdapter {
             750, 19, 380 
         );
         boss.isFacingLeft = true;
+        
         boss.maxHealth = 500f;
         boss.currentHealth = 500f;
 
         System.out.println("Connecting to Python AI...");
         channel = ManagedChannelBuilder.forAddress("localhost", 50051).usePlaintext().build();
         aiStub = AIEngineGrpc.newBlockingStub(channel);
-    }
-
-    // --- DEDICATED IRONEYE SETUP FUNCTION ---
-    private void initIronEyeCharacter() {
-        ironeye = new GameCharacter(
-            "assets/ironeye/Idle.png", 8,
-            "assets/ironeye/Run.png", 8,
-            "assets/ironeye/Jump.png", 2,
-            "assets/ironeye/Attack1.png", 4,
-            "assets/ironeye/Attack2.png", 4,
-            "assets/ironeye/Attack3.png", 4,
-            "assets/ironeye/Take Hit - while silhouette.png", 4,
-            "assets/ironeye/Death.png", 4, 
-            30f, 100f, 150f 
-        );
-        ironeyeArrowTexture = new Texture(Gdx.files.internal("assets/ironeye/projectile.png"));
-        ironeyeArrows = new ArrayList();
     }
 
     @Override
@@ -121,55 +91,41 @@ public class GameClient extends ApplicationAdapter {
     public void render() {
         float deltaTime = Gdx.graphics.getDeltaTime();
         
-        // --- 1. Ironeye Input & Boundaries ---
-        ironeye.isMoving = false; 
-        if (!ironeye.isDead) {
-            if (Gdx.input.isKeyPressed(Input.Keys.A)) { ironeye.x -= ironeye.speed * deltaTime; ironeye.isMoving = true; ironeye.isFacingLeft = true; }
-            if (Gdx.input.isKeyPressed(Input.Keys.D)) { ironeye.x += ironeye.speed * deltaTime; ironeye.isMoving = true; ironeye.isFacingLeft = false; }
-            if (Gdx.input.isKeyJustPressed(Input.Keys.W) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) ironeye.jump();
-            if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) ironeye.attack();
-            if (Gdx.input.isButtonJustPressed(Input.Buttons.RIGHT)) ironeye.secondaryAttack();
-            if (Gdx.input.isKeyJustPressed(Input.Keys.E)) ironeye.superAttack();
-            if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) ironeye.parry();
+        // --- 1. Player Input & Boundaries ---
+        king.isMoving = false; 
+        if (!king.isDead) {
+            if (Gdx.input.isKeyPressed(Input.Keys.A)) { king.x -= king.speed * deltaTime; king.isMoving = true; king.isFacingLeft = true; }
+            if (Gdx.input.isKeyPressed(Input.Keys.D)) { king.x += king.speed * deltaTime; king.isMoving = true; king.isFacingLeft = false; }
+            if (Gdx.input.isKeyJustPressed(Input.Keys.W) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) king.jump();
+            if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) king.attack();
+            if (Gdx.input.isButtonJustPressed(Input.Buttons.RIGHT)) king.secondaryAttack();
+            if (Gdx.input.isKeyJustPressed(Input.Keys.E)) king.superAttack();
+            if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) king.parry();
         }
 
-        if (ironeye.x < -50) ironeye.x = -50; 
-        if (ironeye.x > WORLD_WIDTH - 100) ironeye.x = WORLD_WIDTH - 100;
+        if (king.x < -50) king.x = -50; 
+        if (king.x > WORLD_WIDTH - 100) king.x = WORLD_WIDTH - 100;
         
         if (boss.x < -50) boss.x = -50; 
         if (boss.x > WORLD_WIDTH - 250) boss.x = WORLD_WIDTH - 250; 
 
-        // --- 2. Ironeye Combat & Arrow Projectile Logic ---
-        boolean isIronEyeSwinging = ironeye.isAttacking || ironeye.isSecondaryAttacking || ironeye.isSuperAttacking;
-        if (isIronEyeSwinging && !ironeye.hasDealtDamage && !ironeye.isDead && !boss.isDead) {
-            ironeye.hasDealtDamage = true; 
-            ironeyeArrows.add(new Projectile(ironeye.x, ironeye.y, ironeye.size, ironeye.isFacingLeft));
-        }
-        
-        Iterator iter = ironeyeArrows.iterator();
-        while (iter.hasNext()) {
-            Projectile arrow = (Projectile) iter.next();
-            arrow.update(deltaTime);
-
-            if (arrow.isActive && !boss.isDead && arrow.getHitbox().overlaps(boss.getHitbox())) {
-                if (ironeye.isSuperAttacking) boss.takeDamage(35f);
+        // --- 2. Combat & Hit Detection ---
+        boolean isKingSwinging = king.isAttacking || king.isSecondaryAttacking || king.isSuperAttacking;
+        if (isKingSwinging && !king.hasDealtDamage && !king.isDead && !boss.isDead) {
+            if (king.getHitbox().overlaps(boss.getHitbox())) {
+                king.hasDealtDamage = true; 
+                if (king.isSuperAttacking) boss.takeDamage(35f);
                 else boss.takeDamage(15f);
-                
-                arrow.isActive = false; 
-            }
-
-            if (!arrow.isActive || arrow.x < -200 || arrow.x > WORLD_WIDTH + 200) {
-                iter.remove();
             }
         }
         
         boolean isBossSwinging = boss.isAttacking || boss.isSecondaryAttacking;
-        if (isBossSwinging && !boss.hasDealtDamage && !boss.isDead && !ironeye.isDead) {
-            if (ironeye.isParrying) {
+        if (isBossSwinging && !boss.hasDealtDamage && !boss.isDead && !king.isDead) {
+            if (king.isParrying) {
+                boss.hasDealtDamage = true; // Parry negates damage
+            } else if (boss.getHitbox().overlaps(king.getHitbox())) {
                 boss.hasDealtDamage = true; 
-            } else if (boss.getHitbox().overlaps(ironeye.getHitbox())) {
-                boss.hasDealtDamage = true; 
-                ironeye.takeDamage(10f); 
+                king.takeDamage(10f); 
             }
         }
 
@@ -180,15 +136,16 @@ public class GameClient extends ApplicationAdapter {
             try {
                 String currentAction = "Idle";
                 
-                if (ironeye.isDead) currentAction = "Dead"; 
-                else if (ironeye.isParrying) currentAction = "Idle"; 
-                else if (ironeye.isSuperAttacking) currentAction = "SuperAttacking";
-                else if (ironeye.isAttacking || ironeye.isSecondaryAttacking) currentAction = "Attacking";
-                else if (ironeye.isMoving) currentAction = "Running";
+                // Alert Python if King is dead so the Boss stops swinging
+                if (king.isDead) currentAction = "Dead"; 
+                else if (king.isParrying) currentAction = "Parrying";
+                else if (king.isSuperAttacking) currentAction = "SuperAttacking";
+                else if (king.isAttacking || king.isSecondaryAttacking) currentAction = "Attacking";
+                else if (king.isMoving) currentAction = "Running";
 
                 GameBridgeProto.GameState state = GameBridgeProto.GameState.newBuilder()
-                    .setPlayerId("Ironeye")
-                    .setPlayerX(ironeye.x)
+                    .setPlayerId("Nebuchadnezzar")
+                    .setPlayerX(king.x)
                     .setPlayerY(boss.x) 
                     .setAction(currentAction)
                     .build();
@@ -199,12 +156,12 @@ public class GameClient extends ApplicationAdapter {
                 else if (aiCommand.contains("MOVE_RIGHT")) { boss.isMoving = true; boss.isFacingLeft = false; } 
                 else if (aiCommand.contains("SECONDARY_ATTACK")) { 
                     boss.isMoving = false; 
-                    boss.isFacingLeft = (ironeye.x < boss.x); 
+                    boss.isFacingLeft = (king.x < boss.x); // Force face toward King
                     boss.secondaryAttack(); 
                 }
                 else if (aiCommand.contains("ATTACK")) { 
                     boss.isMoving = false; 
-                    boss.isFacingLeft = (ironeye.x < boss.x); 
+                    boss.isFacingLeft = (king.x < boss.x); // Force face toward King
                     boss.attack(); 
                 }
                 else boss.isMoving = false;
@@ -214,6 +171,7 @@ public class GameClient extends ApplicationAdapter {
             } catch (Exception e) {}
         }
 
+        // Smooth Boss Movement Application (Runs at 60fps)
         if (boss.isMoving && !boss.isDead && !boss.isAttacking && !boss.isSecondaryAttacking) {
             float bossSpeed = 160f; 
             if (boss.isFacingLeft) boss.x -= bossSpeed * deltaTime;
@@ -232,14 +190,8 @@ public class GameClient extends ApplicationAdapter {
         batch.draw(bgLayer2, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         batch.draw(bgLayer3, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         
-        // Render your isolated Ironeye character and arrows
-        ironeye.render(batch, deltaTime);
+        king.render(batch, deltaTime);
         boss.render(batch, deltaTime);
-        
-        for (int i = 0; i < ironeyeArrows.size(); i++) {
-            Projectile arrow = (Projectile) ironeyeArrows.get(i);
-            arrow.render(batch, ironeyeArrowTexture);
-        }
         
         batch.draw(bgLayer4, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         batch.end();
@@ -247,9 +199,9 @@ public class GameClient extends ApplicationAdapter {
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
-        if (!ironeye.isDead) {
+        if (!king.isDead) {
             shapeRenderer.setColor(0.2f, 0.8f, 0.2f, 1);
-            shapeRenderer.rect(ironeye.x + (ironeye.size * 0.2f), ironeye.y + (ironeye.size * 0.55f), 100f * (ironeye.currentHealth / ironeye.maxHealth), 8);
+            shapeRenderer.rect(king.x + (king.size * 0.2f), king.y + (king.size * 0.55f), 100f * (king.currentHealth / king.maxHealth), 8);
         }
         
         if (!boss.isDead) {
@@ -268,9 +220,7 @@ public class GameClient extends ApplicationAdapter {
         bgLayer2.dispose();
         bgLayer3.dispose();
         bgLayer4.dispose();
-        ironeyeArrowTexture.dispose();
-        if (king != null) king.dispose();
-        ironeye.dispose();
+        king.dispose();
         boss.dispose();
         if (channel != null) channel.shutdown();
     }
