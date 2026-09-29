@@ -21,6 +21,7 @@ com\mmo\GameClient.class
 com\mmo\grpc\AIEngineGrpc$AIEngineBaseDescriptorSupplier.class
 com\mmo\grpc\AIEngineGrpc$AIEngineFutureStub.class
 com\mmo\Main.class
+com\mmo\Projectile.class
 com\mmo\grpc\GameBridgeProto$1.class
 com\mmo\grpc\AIEngineGrpc$AIEngineFileDescriptorSupplier.class
 com\mmo\grpc\GameBridgeProto.class

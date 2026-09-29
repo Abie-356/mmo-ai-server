@@ -26,10 +26,11 @@ import com.mmo.grpc.GameBridgeProto;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Iterator; 
 
 public class GameClient extends ApplicationAdapter {
     
-    // --- STATE MACHINE (Starts at Character Select now) ---
+    // --- STATE MACHINE ---
     private enum GameState { CHARACTER_SELECT, INTRO, COMBAT }
     private GameState currentState = GameState.CHARACTER_SELECT;
     
@@ -44,10 +45,16 @@ public class GameClient extends ApplicationAdapter {
     private GameCharacter king;
     private GameCharacter boss;
 
+    private Texture bossTexForCover;
+    private TextureRegion watermarkCover;
+
     private OrthographicCamera camera;
     private Viewport viewport;
     private final float WORLD_WIDTH = 1280f;
     private final float WORLD_HEIGHT = 720f;
+
+    // --- PROJECTILE TRACKING ---
+    private List<Projectile> activeProjectiles = new ArrayList<Projectile>();
 
     // --- DYNAMIC CHARACTER REGISTRY ---
     public static class CharacterProfile {
@@ -71,7 +78,6 @@ public class GameClient extends ApplicationAdapter {
             this.startY = startY;
             this.scaleSize = scaleSize;
             
-            // Load and slice out the first frame for clean card preview
             this.previewTexture = new Texture(Gdx.files.internal(idlePath));
             TextureRegion[][] tmp = TextureRegion.split(previewTexture, previewTexture.getWidth() / idleFrames, previewTexture.getHeight());
             this.previewRegion = tmp[0][0];
@@ -82,7 +88,7 @@ public class GameClient extends ApplicationAdapter {
         }
     }
 
-    private List<CharacterProfile> roster = new ArrayList<>();
+    private List<CharacterProfile> roster = new ArrayList<CharacterProfile>();
     private int selectedIndex = 0;
 
     private ManagedChannel channel;
@@ -99,7 +105,7 @@ public class GameClient extends ApplicationAdapter {
         viewport = new FitViewport(WORLD_WIDTH, WORLD_HEIGHT, camera);
         camera.position.set(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 0);
 
-        // --- POPULATE ROSTER (Teammates can easily add more characters here!) ---
+        // --- POPULATE ROSTER ---
         roster.add(new CharacterProfile(
             "King Nebuchadnezzar",
             "assets/nebuchadnezar/Idle.png", 8,
@@ -107,7 +113,20 @@ public class GameClient extends ApplicationAdapter {
             "assets/nebuchadnezar/Attack1.png",
             30, 130, 150
         ));
-        // roster.add(new CharacterProfile("New Hero", "assets/hero/Idle.png", 6, ...));
+        
+        // Add Ironeye to the roster
+        roster.add(new CharacterProfile(
+            "Ironeye",
+            "assets/ironeye/Idle.png", 8,
+            "assets/ironeye/Run.png",
+            "assets/ironeye/Attack1.png",
+            30, 100, 150
+        ));
+
+        // --- WATERMARK COVER ---
+        bossTexForCover = new Texture(Gdx.files.internal("assets/necromancer/Idle.png"));
+        TextureRegion[][] splitTex = TextureRegion.split(bossTexForCover, bossTexForCover.getWidth() / 8, bossTexForCover.getHeight());
+        watermarkCover = splitTex[0][0];
 
         // --- LOAD BACKGROUND ASSETS ---
         bgLayer1 = new Texture(Gdx.files.internal("assets/background/background.png"));
@@ -139,21 +158,36 @@ public class GameClient extends ApplicationAdapter {
 
     private void initializeSelectedPlayerAndStartVideo() {
         CharacterProfile profile = roster.get(selectedIndex);
-        king = new GameCharacter(
-            profile.idlePath, profile.idleFrames,
-            profile.runPath, 8,
-            "assets/nebuchadnezar/Jump.png", 2,
-            profile.attackPath, 4,
-            profile.attackPath, 4,
-            profile.attackPath, 4,
-            "assets/nebuchadnezar/Take Hit - white silhouette.png", 4,
-            "assets/nebuchadnezar/Death.png", 6, 
-            profile.startX, profile.startY, profile.scaleSize 
-        );
+        
+        // Safely map the correct assets based on who was selected
+        if (profile.name.equals("Ironeye")) {
+            king = new GameCharacter(
+                profile.idlePath, profile.idleFrames,
+                profile.runPath, 8,
+                "assets/ironeye/Jump.png", 2,
+                profile.attackPath, 4,
+                "assets/ironeye/Attack2.png", 4,
+                "assets/ironeye/Attack3.png", 4,
+                "assets/ironeye/Take Hit.png", 4,
+                "assets/ironeye/Death.png", 4, 
+                profile.startX, profile.startY, profile.scaleSize 
+            );
+        } else {
+            king = new GameCharacter(
+                profile.idlePath, profile.idleFrames,
+                profile.runPath, 8,
+                "assets/nebuchadnezar/Jump.png", 2,
+                profile.attackPath, 4,
+                profile.attackPath, 4,
+                profile.attackPath, 4,
+                "assets/nebuchadnezar/Take Hit - white silhouette.png", 4,
+                "assets/nebuchadnezar/Death.png", 6, 
+                profile.startX, profile.startY, profile.scaleSize 
+            );
+        }
 
         currentState = GameState.INTRO;
 
-        // Start Intro Video
         try {
             videoPlayer = VideoPlayerCreator.createVideoPlayer();
             videoPlayer.play(Gdx.files.internal("assets/intro.webm"));
@@ -210,7 +244,6 @@ public class GameClient extends ApplicationAdapter {
             return;
         }
 
-        // Draw Menu Background Cards
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
@@ -226,7 +259,7 @@ public class GameClient extends ApplicationAdapter {
             float cY = (WORLD_HEIGHT - cardHeight) / 2f - 20f;
             
             if (i == selectedIndex) {
-                shapeRenderer.setColor(1.0f, 0.8f, 0.1f, 1f); // Active Gold Highlight
+                shapeRenderer.setColor(1.0f, 0.8f, 0.1f, 1f);
                 shapeRenderer.rect(cX - 6, cY - 6, cardWidth + 12, cardHeight + 12);
             }
             
@@ -235,25 +268,20 @@ public class GameClient extends ApplicationAdapter {
         }
         shapeRenderer.end();
 
-        // Draw Text & Sliced Preview Sprites
         batch.begin();
         font.getData().setScale(2.2f);
         font.draw(batch, "SELECT YOUR CHAMPION", WORLD_WIDTH / 2f - 240f, WORLD_HEIGHT - 70f);
-        
         font.getData().setScale(1.2f);
         font.draw(batch, "Use A/D to Browse | Press ENTER to Watch Intro & Battle", WORLD_WIDTH / 2f - 280f, WORLD_HEIGHT - 120f);
 
         for (int i = 0; i < roster.size(); i++) {
             float cX = startX + (i * (cardWidth + 60f));
             float cY = (WORLD_HEIGHT - cardHeight) / 2f - 20f;
-            
             CharacterProfile p = roster.get(i);
             
-            // Draw Character Name
             font.getData().setScale(1.4f);
             font.draw(batch, p.name, cX + 25f, cY + cardHeight - 35f);
 
-            // Draw Clean Sliced Preview Sprite Frame Centered on Card
             float previewSize = 180f;
             batch.draw(p.previewRegion, cX + (cardWidth - previewSize) / 2f, cY + 100f, previewSize, previewSize);
         }
@@ -274,6 +302,13 @@ public class GameClient extends ApplicationAdapter {
             if (frame != null) {
                 batch.begin();
                 batch.draw(frame, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+                
+                // --- RESTORED WATERMARK COVER PATCH ---
+                float patchX = 865f;   
+                float patchY = -110f; 
+                float patchSize = 600f; 
+                batch.draw(watermarkCover, patchX, patchY, patchSize, patchSize);
+                
                 batch.end();
             }
         }
@@ -286,7 +321,17 @@ public class GameClient extends ApplicationAdapter {
             if (Gdx.input.isKeyPressed(Input.Keys.A)) { king.x -= king.speed * deltaTime; king.isMoving = true; king.isFacingLeft = true; }
             if (Gdx.input.isKeyPressed(Input.Keys.D)) { king.x += king.speed * deltaTime; king.isMoving = true; king.isFacingLeft = false; }
             if (Gdx.input.isKeyJustPressed(Input.Keys.W) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) king.jump();
-            if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) king.attack();
+            
+            // --- PROJECTILE FIRING ---
+            if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
+                king.attack();
+                if (roster.get(selectedIndex).name.equals("Ironeye")) {
+                    float projX = king.isFacingLeft ? king.x : king.x + king.size;
+                    float projY = king.y + (king.size * 0.45f); // Fire from mid-chest height
+                    activeProjectiles.add(new Projectile(projX, projY, king.isFacingLeft));
+                }
+            }
+
             if (Gdx.input.isButtonJustPressed(Input.Buttons.RIGHT)) king.secondaryAttack();
             if (Gdx.input.isKeyJustPressed(Input.Keys.E)) king.superAttack();
             if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) king.parry();
@@ -298,9 +343,25 @@ public class GameClient extends ApplicationAdapter {
         if (boss.x < -50) boss.x = -50; 
         if (boss.x > WORLD_WIDTH - 250) boss.x = WORLD_WIDTH - 250; 
 
+        // --- UPDATE & COLLIDE PROJECTILES ---//
+        Iterator<Projectile> pIter = activeProjectiles.iterator();
+        while (pIter.hasNext()) {
+            Projectile p = pIter.next();
+            p.update(deltaTime);
+            
+            // If the arrow hits the boss, deal damage and destroy the arrow
+            if (p.active && !boss.isDead && p.getHitbox().overlaps(boss.getHurtbox())) {
+                boss.takeDamage(10f);
+                p.active = false;
+            }
+            if (!p.active) pIter.remove();
+        }
+
         // --- 2. Combat & Hit Detection ---
         boolean isKingSwinging = king.isAttacking || king.isSecondaryAttacking || king.isSuperAttacking;
-        if (isKingSwinging && !king.hasDealtDamage && !king.isDead && !boss.isDead) {
+        boolean skipMeleeCheck = roster.get(selectedIndex).name.equals("Ironeye") && king.isAttacking;
+
+        if (isKingSwinging && !king.hasDealtDamage && !king.isDead && !boss.isDead && !skipMeleeCheck) {
             if (king.getHitbox().overlaps(boss.getHurtbox())) {
                 king.hasDealtDamage = true; 
                 if (king.isSuperAttacking) boss.takeDamage(35f);
@@ -331,7 +392,7 @@ public class GameClient extends ApplicationAdapter {
                 else if (king.isMoving) currentAction = "Running";
 
                 GameBridgeProto.GameState state = GameBridgeProto.GameState.newBuilder()
-                    .setPlayerId("Nebuchadnezzar")
+                    .setPlayerId(roster.get(selectedIndex).name)
                     .setPlayerX(king.x)
                     .setPlayerY(boss.x) 
                     .setAction(currentAction)
@@ -376,10 +437,15 @@ public class GameClient extends ApplicationAdapter {
         batch.draw(bgLayer4, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
         batch.end();
 
-        // --- 5. Health Bar Rendering ---
+        // --- 5. Projectiles & Health Bar Rendering ---
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
+        // Draw all active projectiles
+        for (Projectile p : activeProjectiles) {
+            p.render(shapeRenderer);
+        }
+
         if (!king.isDead) {
             float kX = king.x + (king.size * 0.2f);
             float kY = king.y + (king.size * 0.55f);
@@ -413,6 +479,7 @@ public class GameClient extends ApplicationAdapter {
         bgLayer2.dispose();
         bgLayer3.dispose();
         bgLayer4.dispose();
+        if (bossTexForCover != null) bossTexForCover.dispose();
         for (CharacterProfile p : roster) p.dispose();
         if (king != null) king.dispose();
         if (boss != null) boss.dispose();
