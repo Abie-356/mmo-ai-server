@@ -114,7 +114,6 @@ public class GameClient extends ApplicationAdapter {
             30, 130, 150
         ));
         
-        // Add Ironeye to the roster
         roster.add(new CharacterProfile(
             "Ironeye",
             "assets/ironeye/Idle.png", 8,
@@ -134,7 +133,7 @@ public class GameClient extends ApplicationAdapter {
         bgLayer3 = new Texture(Gdx.files.internal("assets/background/background3.png"));
         bgLayer4 = new Texture(Gdx.files.internal("assets/background/background4.png"));
 
-        // Initialize Boss (Necromancer)
+        // Initialize Boss
         boss = new GameCharacter(
             "assets/necromancer/Idle.png", 8, 
             "assets/necromancer/Run.png", 8,
@@ -159,27 +158,27 @@ public class GameClient extends ApplicationAdapter {
     private void initializeSelectedPlayerAndStartVideo() {
         CharacterProfile profile = roster.get(selectedIndex);
         
-        // Safely map the correct assets based on who was selected
         if (profile.name.equals("Ironeye")) {
             king = new GameCharacter(
                 profile.idlePath, profile.idleFrames,
                 profile.runPath, 8,
                 "assets/ironeye/Jump.png", 2,
                 profile.attackPath, 4,
-                "assets/ironeye/Attack2.png", 4,
-                "assets/ironeye/Attack3.png", 4,
+                profile.attackPath, 4, 
+                profile.attackPath, 4, 
                 "assets/ironeye/Take Hit.png", 4,
                 "assets/ironeye/Death.png", 4, 
                 profile.startX, profile.startY, profile.scaleSize 
             );
         } else {
+            // RESTORED: King Nebuchadnezzar's unique combo and ultimate animations
             king = new GameCharacter(
                 profile.idlePath, profile.idleFrames,
                 profile.runPath, 8,
                 "assets/nebuchadnezar/Jump.png", 2,
-                profile.attackPath, 4,
-                profile.attackPath, 4,
-                profile.attackPath, 4,
+                profile.attackPath, 4,                             // Left Click
+                "assets/nebuchadnezar/Attack2.png", 4,             // Right Click
+                "assets/nebuchadnezar/Attack3.png", 4,             // E (Ultimate)
                 "assets/nebuchadnezar/Take Hit - white silhouette.png", 4,
                 "assets/nebuchadnezar/Death.png", 6, 
                 profile.startX, profile.startY, profile.scaleSize 
@@ -303,7 +302,6 @@ public class GameClient extends ApplicationAdapter {
                 batch.begin();
                 batch.draw(frame, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
                 
-                // --- RESTORED WATERMARK COVER PATCH ---
                 float patchX = 865f;   
                 float patchY = -110f; 
                 float patchSize = 600f; 
@@ -322,18 +320,23 @@ public class GameClient extends ApplicationAdapter {
             if (Gdx.input.isKeyPressed(Input.Keys.D)) { king.x += king.speed * deltaTime; king.isMoving = true; king.isFacingLeft = false; }
             if (Gdx.input.isKeyJustPressed(Input.Keys.W) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) king.jump();
             
-            // --- PROJECTILE FIRING ---
+            // Primary Attack (Left Click)
             if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
                 king.attack();
                 if (roster.get(selectedIndex).name.equals("Ironeye")) {
                     float projX = king.isFacingLeft ? king.x : king.x + king.size;
-                    float projY = king.y + (king.size * 0.45f); // Fire from mid-chest height
+                    float projY = king.y + (king.size * 0.45f); 
                     activeProjectiles.add(new Projectile(projX, projY, king.isFacingLeft));
                 }
             }
 
-            if (Gdx.input.isButtonJustPressed(Input.Buttons.RIGHT)) king.secondaryAttack();
-            if (Gdx.input.isKeyJustPressed(Input.Keys.E)) king.superAttack();
+            // Disable Right Click and E entirely if playing as Ironeye
+            if (!roster.get(selectedIndex).name.equals("Ironeye")) {
+                if (Gdx.input.isButtonJustPressed(Input.Buttons.RIGHT)) king.secondaryAttack();
+                if (Gdx.input.isKeyJustPressed(Input.Keys.E)) king.superAttack();
+            }
+
+            // Parry (Q)
             if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) king.parry();
         }
 
@@ -343,13 +346,12 @@ public class GameClient extends ApplicationAdapter {
         if (boss.x < -50) boss.x = -50; 
         if (boss.x > WORLD_WIDTH - 250) boss.x = WORLD_WIDTH - 250; 
 
-        // --- UPDATE & COLLIDE PROJECTILES ---//
+        // --- UPDATE & COLLIDE PROJECTILES ---
         Iterator<Projectile> pIter = activeProjectiles.iterator();
         while (pIter.hasNext()) {
             Projectile p = pIter.next();
             p.update(deltaTime);
             
-            // If the arrow hits the boss, deal damage and destroy the arrow
             if (p.active && !boss.isDead && p.getHitbox().overlaps(boss.getHurtbox())) {
                 boss.takeDamage(10f);
                 p.active = false;
@@ -359,7 +361,7 @@ public class GameClient extends ApplicationAdapter {
 
         // --- 2. Combat & Hit Detection ---
         boolean isKingSwinging = king.isAttacking || king.isSecondaryAttacking || king.isSuperAttacking;
-        boolean skipMeleeCheck = roster.get(selectedIndex).name.equals("Ironeye") && king.isAttacking;
+        boolean skipMeleeCheck = roster.get(selectedIndex).name.equals("Ironeye");
 
         if (isKingSwinging && !king.hasDealtDamage && !king.isDead && !boss.isDead && !skipMeleeCheck) {
             if (king.getHitbox().overlaps(boss.getHurtbox())) {
@@ -441,11 +443,12 @@ public class GameClient extends ApplicationAdapter {
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
-        // Draw all active projectiles
+        // Render Projectiles
         for (Projectile p : activeProjectiles) {
             p.render(shapeRenderer);
         }
 
+        // Render Health Bars
         if (!king.isDead) {
             float kX = king.x + (king.size * 0.2f);
             float kY = king.y + (king.size * 0.55f);
