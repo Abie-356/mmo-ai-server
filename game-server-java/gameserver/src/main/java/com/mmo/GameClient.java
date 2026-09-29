@@ -26,7 +26,7 @@ import com.mmo.grpc.GameBridgeProto;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Iterator; // NEW: Needed for safe projectile cleanup
+import java.util.Iterator; 
 
 public class GameClient extends ApplicationAdapter {
     
@@ -53,8 +53,8 @@ public class GameClient extends ApplicationAdapter {
     private final float WORLD_WIDTH = 1280f;
     private final float WORLD_HEIGHT = 720f;
 
-    // --- NEW: PROJECTILE TRACKING ---
-    private List < Projectile > activeProjectiles = new ArrayList < Projectile >();
+    // --- PROJECTILE TRACKING ---
+    private List<Projectile> activeProjectiles = new ArrayList<Projectile>();
 
     // --- DYNAMIC CHARACTER REGISTRY ---
     public static class CharacterProfile {
@@ -88,7 +88,7 @@ public class GameClient extends ApplicationAdapter {
         }
     }
 
-    private List < CharacterProfile > roster = new ArrayList < CharacterProfile >();
+    private List<CharacterProfile> roster = new ArrayList<CharacterProfile>();
     private int selectedIndex = 0;
 
     private ManagedChannel channel;
@@ -114,7 +114,7 @@ public class GameClient extends ApplicationAdapter {
             30, 130, 150
         ));
         
-        // NEW: Add Ironeye to the roster
+        // Add Ironeye to the roster
         roster.add(new CharacterProfile(
             "Ironeye",
             "assets/ironeye/Idle.png", 8,
@@ -302,6 +302,13 @@ public class GameClient extends ApplicationAdapter {
             if (frame != null) {
                 batch.begin();
                 batch.draw(frame, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+                
+                // --- RESTORED WATERMARK COVER PATCH ---
+                float patchX = 865f;   
+                float patchY = -110f; 
+                float patchSize = 600f; 
+                batch.draw(watermarkCover, patchX, patchY, patchSize, patchSize);
+                
                 batch.end();
             }
         }
@@ -315,7 +322,7 @@ public class GameClient extends ApplicationAdapter {
             if (Gdx.input.isKeyPressed(Input.Keys.D)) { king.x += king.speed * deltaTime; king.isMoving = true; king.isFacingLeft = false; }
             if (Gdx.input.isKeyJustPressed(Input.Keys.W) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) king.jump();
             
-            // --- NEW: PROJECTILE FIRING ---
+            // --- PROJECTILE FIRING ---
             if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
                 king.attack();
                 if (roster.get(selectedIndex).name.equals("Ironeye")) {
@@ -336,8 +343,8 @@ public class GameClient extends ApplicationAdapter {
         if (boss.x < -50) boss.x = -50; 
         if (boss.x > WORLD_WIDTH - 250) boss.x = WORLD_WIDTH - 250; 
 
-        // --- NEW: UPDATE & COLLIDE PROJECTILES ---//
-        Iterator < Projectile > pIter = activeProjectiles.iterator();
+        // --- UPDATE & COLLIDE PROJECTILES ---//
+        Iterator<Projectile> pIter = activeProjectiles.iterator();
         while (pIter.hasNext()) {
             Projectile p = pIter.next();
             p.update(deltaTime);
@@ -434,7 +441,7 @@ public class GameClient extends ApplicationAdapter {
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         
-        // NEW: Draw all active projectiles
+        // Draw all active projectiles
         for (Projectile p : activeProjectiles) {
             p.render(shapeRenderer);
         }
@@ -472,6 +479,7 @@ public class GameClient extends ApplicationAdapter {
         bgLayer2.dispose();
         bgLayer3.dispose();
         bgLayer4.dispose();
+        if (bossTexForCover != null) bossTexForCover.dispose();
         for (CharacterProfile p : roster) p.dispose();
         if (king != null) king.dispose();
         if (boss != null) boss.dispose();
