@@ -55,6 +55,7 @@ public class GameClient extends ApplicationAdapter {
 
     // --- PROJECTILE TRACKING ---
     private List<Projectile> activeProjectiles = new ArrayList<Projectile>();
+    private float attackCooldownTimer = 0f;
 
     // --- DYNAMIC CHARACTER REGISTRY ---
     public static class CharacterProfile {
@@ -313,6 +314,10 @@ public class GameClient extends ApplicationAdapter {
     }
 
     private void renderCombat(float deltaTime) {
+        // --- TICK DOWN ATTACK COOLDOWN ---
+        if (attackCooldownTimer > 0f) {
+            attackCooldownTimer -= deltaTime;
+        }
         // --- 1. Player Input & Boundaries ---
         king.isMoving = false; 
         if (!king.isDead) {
@@ -320,13 +325,19 @@ public class GameClient extends ApplicationAdapter {
             if (Gdx.input.isKeyPressed(Input.Keys.D)) { king.x += king.speed * deltaTime; king.isMoving = true; king.isFacingLeft = false; }
             if (Gdx.input.isKeyJustPressed(Input.Keys.W) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) king.jump();
             
-            // Primary Attack (Left Click)
+            
+            // Primary Attack (Left Click with 0.5s Cooldown for Ironeye)
             if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT)) {
-                king.attack();
-                if (roster.get(selectedIndex).name.equals("Ironeye")) {
-                    float projX = king.isFacingLeft ? king.x : king.x + king.size;
-                    float projY = king.y + (king.size * 0.45f); 
-                    activeProjectiles.add(new Projectile(projX, projY, king.isFacingLeft));
+                boolean isIroneye = roster.get(selectedIndex).name.equals("Ironeye");
+                
+                if (!isIroneye || attackCooldownTimer <= 0f) {
+                    king.attack();
+                    if (isIroneye) {
+                        float projX = king.isFacingLeft ? king.x : king.x + king.size;
+                        float projY = king.y + (king.size * 0.45f); 
+                        activeProjectiles.add(new Projectile(projX, projY, king.isFacingLeft));
+                        attackCooldownTimer = 0.5f; // <--- LOCKS COOLDOWN FOR 0.5 SECONDS
+                    }
                 }
             }
 
