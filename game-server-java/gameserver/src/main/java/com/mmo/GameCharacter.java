@@ -159,7 +159,7 @@ public class GameCharacter {
         float paddingY = size * 0.1f;   
         
         if (isAttacking || isSecondaryAttacking || isSuperAttacking) {
-            float weaponReach = (size > 200) ? 160f : 0f;
+            float weaponReach = (size > 200) ? 160f : (size >= 150 ? 70f : 0f);
             if (isFacingLeft) {
                 return new Rectangle((x + paddingX) - weaponReach, y + paddingY, (size - (paddingX * 2)) + weaponReach, size - (paddingY * 2));
             } else {

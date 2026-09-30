@@ -82,10 +82,28 @@
         </configuration>
         <executions>
           <execution>
+            <id>generate-protobuf-java</id>
+            <phase>generate-sources</phase>
             <goals>
               <goal>compile</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${java.io.tmpdir}/mmo-ai-server/generated-sources/protobuf/java</outputDirectory>
+              <temporaryProtoFileDirectory>${java.io.tmpdir}/mmo-ai-server/protoc-dependencies-java</temporaryProtoFileDirectory>
+              <clearOutputDirectory>false</clearOutputDirectory>
+            </configuration>
+          </execution>
+          <execution>
+            <id>generate-grpc-java</id>
+            <phase>generate-sources</phase>
+            <goals>
               <goal>compile-custom</goal>
             </goals>
+            <configuration>
+              <outputDirectory>${java.io.tmpdir}/mmo-ai-server/generated-sources/protobuf/grpc-java</outputDirectory>
+              <temporaryProtoFileDirectory>${java.io.tmpdir}/mmo-ai-server/protoc-dependencies-grpc</temporaryProtoFileDirectory>
+              <clearOutputDirectory>false</clearOutputDirectory>
+            </configuration>
           </execution>
         </executions>
       </plugin>

@@ -27,6 +27,7 @@ import com.mmo.grpc.GameBridgeProto;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Iterator; 
+import java.util.concurrent.TimeUnit;
 
 public class GameClient extends ApplicationAdapter {
     
@@ -36,6 +37,7 @@ public class GameClient extends ApplicationAdapter {
     
     private VideoPlayer videoPlayer;
     private boolean isVideoPlaying = false;
+    private volatile boolean introCompletionPending = false;
 
     private SpriteBatch batch;
     private ShapeRenderer shapeRenderer; 
@@ -95,6 +97,7 @@ public class GameClient extends ApplicationAdapter {
     private ManagedChannel channel;
     private AIEngineGrpc.AIEngineBlockingStub aiStub;
     private float networkTimer = 0f;
+    private boolean aiConnectionWarningShown = false;
 
     @Override
     public void create() {
@@ -121,6 +124,14 @@ public class GameClient extends ApplicationAdapter {
             "assets/ironeye/Run.png",
             "assets/ironeye/Attack1.png",
             30, 100, 150
+        ));
+
+        roster.add(new CharacterProfile(
+            "Sekiro",
+            "assets/sekiro/Idle.png", 8,
+            "assets/sekiro/Run.png",
+            "assets/sekiro/Attack1.png",
+            30, 46, 250
         ));
 
         // --- WATERMARK COVER ---
@@ -171,6 +182,18 @@ public class GameClient extends ApplicationAdapter {
                 "assets/ironeye/Death.png", 4, 
                 profile.startX, profile.startY, profile.scaleSize 
             );
+        } else if (profile.name.equals("Sekiro")) {
+            king = new GameCharacter(
+                profile.idlePath, profile.idleFrames,
+                profile.runPath, 8,
+                "assets/sekiro/Jump.png", 2,
+                profile.attackPath, 6,
+                "assets/sekiro/Attack2.png", 6,
+                "assets/sekiro/Attack2.png", 6,
+                "assets/sekiro/Take Hit.png", 4,
+                "assets/sekiro/Death.png", 6,
+                profile.startX, profile.startY, profile.scaleSize
+            );
         } else {
             // RESTORED: King Nebuchadnezzar's unique combo and ultimate animations
             king = new GameCharacter(
@@ -192,7 +215,7 @@ public class GameClient extends ApplicationAdapter {
             videoPlayer = VideoPlayerCreator.createVideoPlayer();
             videoPlayer.play(Gdx.files.internal("assets/intro.webm"));
             isVideoPlaying = true;
-            videoPlayer.setOnCompletionListener(file -> transitionToCombat());
+            videoPlayer.setOnCompletionListener(file -> introCompletionPending = true);
         } catch (Exception e) {
             System.out.println("Warning: Video failed to load. Skipping straight to Combat.");
             transitionToCombat();
@@ -282,8 +305,20 @@ public class GameClient extends ApplicationAdapter {
             font.getData().setScale(1.4f);
             font.draw(batch, p.name, cX + 25f, cY + cardHeight - 35f);
 
-            float previewSize = 180f;
-            batch.draw(p.previewRegion, cX + (cardWidth - previewSize) / 2f, cY + 100f, previewSize, previewSize);
+            float previewScale = 1f;
+            float previewOffsetY = 0f;
+            if (p.name.equals("King Nebuchadnezzar")) {
+                previewScale = 1.1f;
+                previewOffsetY = 49f;
+            } else if (p.name.equals("Ironeye")) {
+                previewScale = 0.95f;
+            } else if (p.name.equals("Sekiro")) {
+                previewScale = 1.76f;
+                previewOffsetY = 70f;
+            }
+            float previewSize = 180f * previewScale;
+            previewOffsetY -= previewSize - 180f;
+            batch.draw(p.previewRegion, cX + (cardWidth - previewSize) / 2f, cY + 100f + previewOffsetY, previewSize, previewSize);
         }
         batch.end();
     }
@@ -296,6 +331,11 @@ public class GameClient extends ApplicationAdapter {
 
         if (isVideoPlaying && videoPlayer != null) {
             videoPlayer.update();
+            if (introCompletionPending) {
+                introCompletionPending = false;
+                transitionToCombat();
+                return;
+            }
             if (videoPlayer == null || currentState != GameState.INTRO) return;
             
             Texture frame = videoPlayer.getTexture();
@@ -411,7 +451,9 @@ public class GameClient extends ApplicationAdapter {
                     .setAction(currentAction)
                     .build();
 
-                String aiCommand = aiStub.sendState(state).getGeneratedCommand();
+                String aiCommand = aiStub.withDeadlineAfter(250, TimeUnit.MILLISECONDS)
+                    .sendState(state).getGeneratedCommand();
+                aiConnectionWarningShown = false;
 
                 if (aiCommand.contains("MOVE_LEFT")) { boss.isMoving = true; boss.isFacingLeft = true; } 
                 else if (aiCommand.contains("MOVE_RIGHT")) { boss.isMoving = true; boss.isFacingLeft = false; } 
@@ -429,7 +471,13 @@ public class GameClient extends ApplicationAdapter {
                 
                 if (aiCommand.contains("JUMP")) boss.jump();
 
-            } catch (Exception e) {}
+            } catch (Exception e) {
+                boss.isMoving = false;
+                if (!aiConnectionWarningShown) {
+                    System.err.println("AI service request failed; combat will continue: " + e.getMessage());
+                    aiConnectionWarningShown = true;
+                }
+            }
         }
 
         if (boss.isMoving && !boss.isDead && !boss.isAttacking && !boss.isSecondaryAttacking) {
