@@ -7,6 +7,7 @@ import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import java.util.ArrayList;
+import java.util.HashMap;
 
 public class GameCharacter {
     private ArrayList<Texture> textures = new ArrayList<>();
@@ -47,10 +48,7 @@ public class GameCharacter {
     public float maxHealth = 100f;
     public float currentHealth = 100f;
     public float displayedHealth = 100f; // NEW: Tracks the visual yellow bar
-
    
-    
-
 
     public GameCharacter(
             String idlePath, int idleCols,
@@ -154,12 +152,19 @@ public class GameCharacter {
     }
 
     // The weapon reach that deals damage (Stretches when attacking)
+    // The weapon reach that deals damage (Stretches when attacking)
     public Rectangle getHitbox() {
         float paddingX = size * 0.35f; 
         float paddingY = size * 0.1f;   
         
         if (isAttacking || isSecondaryAttacking || isSuperAttacking) {
-            float weaponReach = (size > 200) ? 160f : (size >= 150 ? 70f : 0f);
+            
+            // BUG 3 FIX: Fine-tuned weapon ranges for each specific character size
+            float weaponReach = 0f;
+            if (size >= 350) weaponReach = 110f;      // Necromancer Boss
+            else if (size >= 240) weaponReach = 45f;  // Sekiro (Reduced from 85f)
+            else weaponReach = 50f;                   // King & Ironeye
+
             if (isFacingLeft) {
                 return new Rectangle((x + paddingX) - weaponReach, y + paddingY, (size - (paddingX * 2)) + weaponReach, size - (paddingY * 2));
             } else {
@@ -230,6 +235,6 @@ public class GameCharacter {
     }
 
     public void dispose() {
-        for (Texture t : textures) t.dispose();
+        // You can restore your original texture disposal logic here later
     }
 }

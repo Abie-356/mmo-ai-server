@@ -1,26 +1,36 @@
 syntax = "proto3";
-
-// This makes sure Java puts the generated files in the right package later
+package mmo;
 option java_package = "com.mmo.grpc";
 option java_outer_classname = "GameBridgeProto";
 
-package mmo;
+message EntityState {
+    string id = 1;
+    string character = 2;
+    float x = 3;
+    float y = 4;
+    string action = 5;
+    bool isFacingLeft = 6;
+}
 
-// The Java server sends this to the Python AI
+message GameWorldUpdate {
+    repeated EntityState players = 1;
+    EntityState boss = 2;
+    repeated EntityState enemies = 3; // NEW: Dedicated enemy stream!
+}
+
 message GameState {
-  string player_id = 1;
-  float player_x = 2;
-  float player_y = 3;
-  string action = 4;
+    string player_id = 1;
+    float player_x = 2;
+    float player_y = 3;
+    string action = 4;
 }
 
-// The Python AI replies with this
 message BotScript {
-  string bot_id = 1;
-  string generated_command = 2;
+    string bot_id = 1;
+    string generated_command = 2;
 }
 
-// The actual service connection (The Bridge)
 service AIEngine {
-  rpc SendState (GameState) returns (BotScript);
+    rpc JoinLobby(stream EntityState) returns (stream GameWorldUpdate);
+    rpc SendState(GameState) returns (BotScript);
 }

@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11game_bridge.proto\x12\x03mmo\"R\n\tGameState\x12\x11\n\tplayer_id\x18\x01 \x01(\t\x12\x10\n\x08player_x\x18\x02 \x01(\x02\x12\x10\n\x08player_y\x18\x03 \x01(\x02\x12\x0e\n\x06\x61\x63tion\x18\x04 \x01(\t\"6\n\tBotScript\x12\x0e\n\x06\x62ot_id\x18\x01 \x01(\t\x12\x19\n\x11generated_command\x18\x02 \x01(\t27\n\x08\x41IEngine\x12+\n\tSendState\x12\x0e.mmo.GameState\x1a\x0e.mmo.BotScriptB\x1f\n\x0c\x63om.mmo.grpcB\x0fGameBridgeProtob\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11game_bridge.proto\x12\x03mmo\"h\n\x0b\x45ntityState\x12\n\n\x02id\x18\x01 \x01(\t\x12\x11\n\tcharacter\x18\x02 \x01(\t\x12\t\n\x01x\x18\x03 \x01(\x02\x12\t\n\x01y\x18\x04 \x01(\x02\x12\x0e\n\x06\x61\x63tion\x18\x05 \x01(\t\x12\x14\n\x0cisFacingLeft\x18\x06 \x01(\x08\"w\n\x0fGameWorldUpdate\x12!\n\x07players\x18\x01 \x03(\x0b\x32\x10.mmo.EntityState\x12\x1e\n\x04\x62oss\x18\x02 \x01(\x0b\x32\x10.mmo.EntityState\x12!\n\x07\x65nemies\x18\x03 \x03(\x0b\x32\x10.mmo.EntityState\"R\n\tGameState\x12\x11\n\tplayer_id\x18\x01 \x01(\t\x12\x10\n\x08player_x\x18\x02 \x01(\x02\x12\x10\n\x08player_y\x18\x03 \x01(\x02\x12\x0e\n\x06\x61\x63tion\x18\x04 \x01(\t\"6\n\tBotScript\x12\x0e\n\x06\x62ot_id\x18\x01 \x01(\t\x12\x19\n\x11generated_command\x18\x02 \x01(\t2p\n\x08\x41IEngine\x12\x37\n\tJoinLobby\x12\x10.mmo.EntityState\x1a\x14.mmo.GameWorldUpdate(\x01\x30\x01\x12+\n\tSendState\x12\x0e.mmo.GameState\x1a\x0e.mmo.BotScriptB\x1f\n\x0c\x63om.mmo.grpcB\x0fGameBridgeProtob\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,10 +32,14 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'game_bridge_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n\014com.mmo.grpcB\017GameBridgeProto'
-  _globals['_GAMESTATE']._serialized_start=26
-  _globals['_GAMESTATE']._serialized_end=108
-  _globals['_BOTSCRIPT']._serialized_start=110
-  _globals['_BOTSCRIPT']._serialized_end=164
-  _globals['_AIENGINE']._serialized_start=166
-  _globals['_AIENGINE']._serialized_end=221
+  _globals['_ENTITYSTATE']._serialized_start=26
+  _globals['_ENTITYSTATE']._serialized_end=130
+  _globals['_GAMEWORLDUPDATE']._serialized_start=132
+  _globals['_GAMEWORLDUPDATE']._serialized_end=251
+  _globals['_GAMESTATE']._serialized_start=253
+  _globals['_GAMESTATE']._serialized_end=335
+  _globals['_BOTSCRIPT']._serialized_start=337
+  _globals['_BOTSCRIPT']._serialized_end=391
+  _globals['_AIENGINE']._serialized_start=393
+  _globals['_AIENGINE']._serialized_end=505
 # @@protoc_insertion_point(module_scope)

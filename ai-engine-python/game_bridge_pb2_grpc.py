@@ -5,7 +5,7 @@ import warnings
 
 import game_bridge_pb2 as game__bridge__pb2
 
-GRPC_GENERATED_VERSION = '1.83.0'
+GRPC_GENERATED_VERSION = '1.83.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -26,8 +26,7 @@ if _version_not_supported:
 
 
 class AIEngineStub:
-    """The actual service connection (The Bridge)
-    """
+    """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
         """Constructor.
@@ -35,6 +34,11 @@ class AIEngineStub:
         Args:
             channel: A grpc.Channel.
         """
+        self.JoinLobby = channel.stream_stream(
+                '/mmo.AIEngine/JoinLobby',
+                request_serializer=game__bridge__pb2.EntityState.SerializeToString,
+                response_deserializer=game__bridge__pb2.GameWorldUpdate.FromString,
+                _registered_method=True)
         self.SendState = channel.unary_unary(
                 '/mmo.AIEngine/SendState',
                 request_serializer=game__bridge__pb2.GameState.SerializeToString,
@@ -43,8 +47,13 @@ class AIEngineStub:
 
 
 class AIEngineServicer:
-    """The actual service connection (The Bridge)
-    """
+    """Missing associated documentation comment in .proto file."""
+
+    def JoinLobby(self, request_iterator, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
     def SendState(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -55,6 +64,11 @@ class AIEngineServicer:
 
 def add_AIEngineServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'JoinLobby': grpc.stream_stream_rpc_method_handler(
+                    servicer.JoinLobby,
+                    request_deserializer=game__bridge__pb2.EntityState.FromString,
+                    response_serializer=game__bridge__pb2.GameWorldUpdate.SerializeToString,
+            ),
             'SendState': grpc.unary_unary_rpc_method_handler(
                     servicer.SendState,
                     request_deserializer=game__bridge__pb2.GameState.FromString,
@@ -69,8 +83,34 @@ def add_AIEngineServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class AIEngine:
-    """The actual service connection (The Bridge)
-    """
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def JoinLobby(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_stream(
+            request_iterator,
+            target,
+            '/mmo.AIEngine/JoinLobby',
+            game__bridge__pb2.EntityState.SerializeToString,
+            game__bridge__pb2.GameWorldUpdate.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def SendState(request,
