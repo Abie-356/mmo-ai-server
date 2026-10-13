@@ -25,6 +25,7 @@ import com.mmo.grpc.AIEngineGrpc;
 import com.mmo.grpc.GameBridgeProto;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Iterator; 
 import java.util.Map;
@@ -82,6 +83,13 @@ public class GameClient extends ApplicationAdapter {
     private float networkTimer = 0f;
     private boolean aiConnectionWarningShown = false;
     private float targetBossX = 750f; 
+
+    // Add these near the top with your other variables
+    public String myPlayerId = "Mizuhara"; // NOTE: Your teammate MUST change this to "Aizen" on their laptop!
+    private Map<String, GameCharacter> teammateModels = new HashMap<>();
+
+    private Map<String, Float> teammateTargetX = new ConcurrentHashMap<>();
+    private Map<String, Float> teammateTargetY = new ConcurrentHashMap<>();
 
     public static class CharacterProfile {
         public String name, idlePath, runPath, attackPath;
@@ -247,8 +255,49 @@ public class GameClient extends ApplicationAdapter {
             @Override
             public void onNext(GameBridgeProto.GameWorldUpdate update) {
                 // 1. READ PLAYERS
+                // 1. READ PLAYERS
                 for (GameBridgeProto.EntityState p : update.getPlayersList()) {
-                    if (!p.getId().equals("Abishek")) networkPlayers.put(p.getId(), p);
+                    if (p.getId().equals(myPlayerId)) {
+                        continue; // Ignore our own server echo
+                    }
+                    
+                    // IT IS A TEAMMATE!
+                    networkPlayers.put(p.getId(), p);
+                    
+                    // 1. Spawn their character model safely on the OpenGL Main Thread
+                    Gdx.app.postRunnable(() -> {
+                        if (!teammateModels.containsKey(p.getId())) {
+                            GameCharacter tModel = null;
+                            String charName = p.getCharacter();
+                            
+                            // Map the incoming name to the correct massive GameCharacter constructor
+                            for (CharacterProfile profile : roster) {
+                                if (profile.name.equals(charName)) {
+                                    if (charName.equals("Ironeye")) {
+                                        tModel = new GameCharacter(profile.idlePath, profile.idleFrames, profile.runPath, 8, "assets/ironeye/Jump.png", 2, profile.attackPath, 4, profile.attackPath, 4, profile.attackPath, 4, "assets/ironeye/Take Hit.png", 4, "assets/ironeye/Death.png", 4, p.getX(), p.getY(), profile.scaleSize);
+                                    } else if (charName.equals("Sekiro")) {
+                                        tModel = new GameCharacter(profile.idlePath, profile.idleFrames, profile.runPath, 8, "assets/sekiro/Jump.png", 2, profile.attackPath, 6, "assets/sekiro/Attack2.png", 6, "assets/sekiro/Attack2.png", 6, "assets/sekiro/Take Hit.png", 4, "assets/sekiro/Death.png", 6, p.getX(), p.getY(), profile.scaleSize);
+                                    } else { // King Nebuchadnezzar
+                                         tModel = new GameCharacter(profile.idlePath, profile.idleFrames, profile.runPath, 8, "assets/nebuchadnezar/Jump.png", 2, profile.attackPath, 4, "assets/nebuchadnezar/Attack2.png", 4, "assets/nebuchadnezar/Attack3.png", 4, "assets/nebuchadnezar/Take Hit - white silhouette.png", 4, "assets/nebuchadnezar/Death.png", 6, p.getX(), p.getY(), profile.scaleSize);
+                                    }
+                                    break;
+                                }
+                            }
+                            // Safety fallback
+                            if (tModel == null) tModel = new GameCharacter(roster.get(0).idlePath, roster.get(0).idleFrames, roster.get(0).runPath, 8, "assets/nebuchadnezar/Jump.png", 2, roster.get(0).attackPath, 4, "assets/nebuchadnezar/Attack2.png", 4, "assets/nebuchadnezar/Attack3.png", 4, "assets/nebuchadnezar/Take Hit - white silhouette.png", 4, "assets/nebuchadnezar/Death.png", 6, p.getX(), p.getY(), roster.get(0).scaleSize);
+                            
+                            teammateModels.put(p.getId(), tModel);
+                        }
+                    });
+
+                    // 2. Sync their animations and position
+                        GameCharacter tModel = teammateModels.get(p.getId());
+                        
+                        // FIX: Store their incoming target coordinates instead of snapping them!
+                        teammateTargetX.put(p.getId(), p.getX());
+                        teammateTargetY.put(p.getId(), p.getY());
+                        
+                        tModel.isFacingLeft = p.getIsFacingLeft();
                 }
                 
                 // 2. READ DEDICATED ENEMIES STREAM
@@ -283,6 +332,12 @@ public class GameClient extends ApplicationAdapter {
                 if (update.hasBoss()) {
                     GameBridgeProto.EntityState b = update.getBoss();
                     boolean serverSaysDead = b.getAction().equals("Dead");
+
+                    // FIX: If the server says he's dead, override local health instantly so the teammate's client agrees.
+                    if (serverSaysDead) {
+                        boss.isDead = true;
+                        boss.currentHealth = 0;
+                    }
                     
                     if (serverSaysDead && !isVideoPhase && !finalPhaseComplete) {
                         if (currentPhase < 3) {
@@ -391,7 +446,8 @@ public class GameClient extends ApplicationAdapter {
     }
 
     private void renderIntro() {
-        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) || Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) { transitionToCombat(); return; }
+        // Removed SPACE skip. Players can only exit via ESC in an emergency.
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) { transitionToCombat(); return; }
         if (isVideoPlaying && videoPlayer != null) {
             videoPlayer.update();
             if (introCompletionPending) { introCompletionPending = false; transitionToCombat(); return; }
@@ -516,6 +572,23 @@ public class GameClient extends ApplicationAdapter {
                 }
             }
 
+            // TEAMMATE INTERPOLATION (Smooths out network lag)
+            for (Map.Entry<String, GameCharacter> entry : teammateModels.entrySet()) {
+                String id = entry.getKey();
+                GameCharacter tModel = entry.getValue();
+                
+                float tX = teammateTargetX.getOrDefault(id, tModel.x);
+                float tY = teammateTargetY.getOrDefault(id, tModel.y);
+                
+                // Glide X
+                if (Math.abs(tModel.x - tX) > 150f) tModel.x = tX;
+                else tModel.x += (tX - tModel.x) * 15f * deltaTime;
+                
+                // Glide Y
+                if (Math.abs(tModel.y - tY) > 150f) tModel.y = tY;
+                else tModel.y += (tY - tModel.y) * 15f * deltaTime;
+            }
+
             // FIX: Only sync Boss X coordinate if ALIVE
             if (!boss.isDead) {
                 if (Math.abs(boss.x - targetBossX) > 150f) boss.x = targetBossX;
@@ -542,7 +615,7 @@ public class GameClient extends ApplicationAdapter {
                 }
 
                 GameBridgeProto.EntityState state = GameBridgeProto.EntityState.newBuilder()
-                    .setId("Abishek") 
+                    .setId(myPlayerId) 
                     .setCharacter(roster.get(selectedIndex).name)
                     .setX(king.x).setY(king.y) 
                     .setAction(currentAction)
@@ -562,6 +635,11 @@ public class GameClient extends ApplicationAdapter {
         king.render(batch, deltaTime); 
         if (!bossIsServerDead) boss.render(batch, deltaTime);
         for (GameCharacter e : activeEnemies.values()) e.render(batch, deltaTime); // Render Minions!
+        
+        // FIX: Actually render the teammate sprites!
+        for (GameCharacter teammate : teammateModels.values()) {
+            teammate.render(batch, deltaTime);
+        }
 
         font.getData().setScale(1.2f);
         for (GameBridgeProto.EntityState teammate : networkPlayers.values()) {

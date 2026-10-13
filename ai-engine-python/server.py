@@ -20,6 +20,7 @@ class AIEngineServicer(game_bridge_pb2_grpc.AIEngineServicer):
         self.phase = 1
         self.enemies = {}
         self.awakened_mimics = set() # NEW: Tracks triggered Mimics
+        self.game_started = False
         
         self.boss = game_bridge_pb2.EntityState(
             id="Boss", character="Necromancer", x=750.0, y=19.0, action="Idle", isFacingLeft=True
@@ -168,6 +169,12 @@ class AIEngineServicer(game_bridge_pb2_grpc.AIEngineServicer):
                 print(f"CRITICAL AI ERROR: {e}")
 
     def JoinLobby(self, request_iterator, context):
+        # FIX: Start the cinematic timer ONLY when someone actually joins the game!
+        if not self.game_started:
+            print("First player joined! Starting Phase 1 intro timer...")
+            self.game_started = True
+            self.lobby_start_time = time.time() + 10.0
+            
         player_id = None
         try:
             for player_state in request_iterator:
