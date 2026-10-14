@@ -12,15 +12,15 @@ class AIEngineServicer(game_bridge_pb2_grpc.AIEngineServicer):
         self.player_last_seen = {} 
         self.lock = threading.Lock()
         self.boss_attack_cooldown = 0.0 
-        
-        self.lobby_start_time = 0.0
-        self.is_match_started = False
-        self.current_target_id = None 
+
+        self.current_target_id = None
         
         self.phase = 1
         self.enemies = {}
-        self.awakened_mimics = set() # NEW: Tracks triggered Mimics
+        self.awakened_mimics = set()
+        
         self.game_started = False
+        self.lobby_start_time = float('inf')
         
         self.boss = game_bridge_pb2.EntityState(
             id="Boss", character="Necromancer", x=750.0, y=19.0, action="Idle", isFacingLeft=True
@@ -32,6 +32,11 @@ class AIEngineServicer(game_bridge_pb2_grpc.AIEngineServicer):
     def boss_ai_loop(self):
         last_time = time.time()
         while True:
+            if not self.game_started:
+                time.sleep(0.03)
+                last_time = time.time() # Keeps clock perfectly synced while waiting
+                continue
+                
             time.sleep(0.03) 
             current_time = time.time()
             dt = current_time - last_time
@@ -39,39 +44,38 @@ class AIEngineServicer(game_bridge_pb2_grpc.AIEngineServicer):
             
             try:
                 with self.lock:
-                    dead_players = [pid for pid, last_seen in self.player_last_seen.items() if current_time - last_seen > 2.0]
+                    # 1. CLEANUP AFK PLAYERS (Increased to 15 seconds for Wi-Fi safety)
+                    dead_players = [pid for pid, last_seen in self.player_last_seen.items() if current_time - last_seen > 15.0]
                     for pid in dead_players:
-                        del self.active_players[pid]
-                        del self.player_last_seen[pid]
+                        if pid in self.active_players: del self.active_players[pid]
+                        if pid in self.player_last_seen: del self.player_last_seen[pid]
 
+                    # 2. AUTO-RESET IF EMPTY
                     if not self.active_players:
-                        self.is_match_started = False 
+                        print("Lobby empty. Resetting arena for next match...")
+                        self.game_started = False 
                         self.current_target_id = None
                         self.boss.x = 750.0
                         self.boss.action = "Idle"
                         self.boss.isFacingLeft = True
                         self.phase = 1 
                         self.enemies.clear()
+                        self.awakened_mimics.clear()
                         continue
 
-                    if not self.is_match_started:
-                        print("Match Starting in 3 seconds...")
-                        self.is_match_started = True
-                        self.lobby_start_time = time.time() + 3.0 
-                    
+                    # 3. PHASE SPAWNING & CINEMATIC WAIT STATE
                     if self.boss.action == "Dead":
                         if self.phase > 3:
                             continue
 
                         if time.time() > self.lobby_start_time:
                             print(f"Spawning Phase {self.phase}!")
-                            self.awakened_mimics.clear() # Reset mimic traps
-
+                            self.awakened_mimics.clear()
                             self.boss.action = "Idle"
                             self.boss.x = 750.0
                             self.boss_attack_cooldown = 2.0
                             
-                            # SPAWN MINIONS BASED ON PHASE
+                            # SPAWN MINIONS
                             if self.phase == 2:
                                 self.enemies["Enemy_Bat1"] = game_bridge_pb2.EntityState(id="Enemy_Bat1", character="Bat", x=800.0, y=150, action="Idle", isFacingLeft=True)
                                 self.enemies["Enemy_Slime1"] = game_bridge_pb2.EntityState(id="Enemy_Slime1", character="Slime", x=900.0, y=75, action="Idle", isFacingLeft=True)
@@ -81,24 +85,25 @@ class AIEngineServicer(game_bridge_pb2_grpc.AIEngineServicer):
                                 self.enemies["Enemy_Mimic1"] = game_bridge_pb2.EntityState(id="Enemy_Mimic1", character="Mimic", x=900.0, y=75.0, action="Idle", isFacingLeft=True)
                                 self.enemies["Enemy_Rat1"] = game_bridge_pb2.EntityState(id="Enemy_Rat1", character="Rat", x=1000.0, y=110.0, action="Idle", isFacingLeft=True)
                         else:
-                            continue 
-
+                            continue # Freeze AI completely while video finishes
+                            
+                    # Freeze Boss if waiting for a cinematic to finish
                     if time.time() < self.lobby_start_time:
                         self.boss.action = "Idle"
                         continue
-                        
+
+                    # 4. BOSS COOLDOWN
                     if self.boss_attack_cooldown > 0:
                         self.boss_attack_cooldown -= dt
                         continue
                         
+                    # 5. BOSS TARGET ACQUISITION
                     alive_players = {p.id: p for p in self.active_players.values() if p.action != "Dead"}
-                    
                     if not alive_players:
                         self.boss.action = "Idle"
                         self.current_target_id = None
                         continue
                         
-                    # Safely pick a target
                     player_list = list(alive_players.values())
                     if self.current_target_id not in alive_players:
                         new_target = min(player_list, key=lambda p: abs((p.x + (125.0 if p.character == "Sekiro" else 75.0)) - (self.boss.x + 190.0)))
@@ -111,6 +116,7 @@ class AIEngineServicer(game_bridge_pb2_grpc.AIEngineServicer):
                         if closest_dist < current_dist - 150.0: 
                             self.current_target_id = closest_player.id
 
+                    # 6. BOSS COMBAT LOGIC
                     target_player = alive_players[self.current_target_id]
                     p_center = target_player.x + (125.0 if target_player.character == "Sekiro" else 75.0)
                     b_center = self.boss.x + 190.0
@@ -133,21 +139,19 @@ class AIEngineServicer(game_bridge_pb2_grpc.AIEngineServicer):
                         if random.random() < 0.05:
                             self.boss.action = "Jump"
 
-                    # MINION AI
+                    # 7. MINION AI
                     for enemy_id, enemy in self.enemies.items():
                         closest_e_target = min(player_list, key=lambda p: abs(p.x - enemy.x))
                         dist_e = abs(closest_e_target.x - enemy.x)
                         
-                        # FIX 2: Mimic Trap Behavior
                         if enemy.character == "Mimic":
                             if enemy_id not in self.awakened_mimics:
-                                if dist_e <= 200.0: # Player got too close!
+                                if dist_e <= 200.0:
                                     self.awakened_mimics.add(enemy_id)
                                 else:
                                     enemy.action = "Idle"
-                                    continue # Stay frozen as a chest
+                                    continue 
                         
-                        # Dynamic Minion Speeds
                         if enemy.character == "Rat": e_speed = 150.0
                         elif enemy.character == "Bat": e_speed = 120.0
                         elif enemy.character == "Mimic": e_speed = 140.0
@@ -169,11 +173,11 @@ class AIEngineServicer(game_bridge_pb2_grpc.AIEngineServicer):
                 print(f"CRITICAL AI ERROR: {e}")
 
     def JoinLobby(self, request_iterator, context):
-        # FIX: Start the cinematic timer ONLY when someone actually joins the game!
-        if not self.game_started:
-            print("First player joined! Starting Phase 1 intro timer...")
-            self.game_started = True
-            self.lobby_start_time = time.time() + 10.0
+        with self.lock:
+            if not self.game_started:
+                print("First player arrived in arena! Starting combat...")
+                self.game_started = True
+                self.lobby_start_time = time.time() + 2.0 
             
         player_id = None
         try:
@@ -182,18 +186,20 @@ class AIEngineServicer(game_bridge_pb2_grpc.AIEngineServicer):
                     player_id = player_state.id
                     print(f"Player {player_id} joined the lobby!")
 
-                print(f"Received from {player_state.id}: x={player_state.x}, action={player_state.action}")
-
                 with self.lock:
                     if player_state.action == "KILLED_BOSS" and self.boss.action != "Dead":
-                        print("Boss Defeated! Triggering Phase Transition...")
+                        print(f"Boss Defeated by {player_state.id}! Triggering Phase Transition...")
                         self.boss.action = "Dead"
                         self.phase += 1
-                        self.lobby_start_time = time.time() + 10.0
+                        self.lobby_start_time = time.time() + 10.0 
                         self.enemies.clear() 
 
-                    self.active_players[player_state.id] = player_state
-                    self.player_last_seen[player_state.id] = time.time() 
+                    # CRITICAL FIX: Make a deep copy to prevent Protobuf memory corruption!
+                    safe_state = game_bridge_pb2.EntityState()
+                    safe_state.CopyFrom(player_state)
+                    
+                    self.active_players[safe_state.id] = safe_state
+                    self.player_last_seen[safe_state.id] = time.time() 
                     
                     world_update = game_bridge_pb2.GameWorldUpdate()
                     world_update.players.extend(self.active_players.values())
@@ -207,10 +213,8 @@ class AIEngineServicer(game_bridge_pb2_grpc.AIEngineServicer):
         finally:
             if player_id in self.active_players:
                 with self.lock:
-                    if player_id in self.active_players:
-                        del self.active_players[player_id]
-                    if player_id in self.player_last_seen:
-                        del self.player_last_seen[player_id]
+                    if player_id in self.active_players: del self.active_players[player_id]
+                    if player_id in self.player_last_seen: del self.player_last_seen[player_id]
                 print(f"Player {player_id} left.")
 
 def serve():

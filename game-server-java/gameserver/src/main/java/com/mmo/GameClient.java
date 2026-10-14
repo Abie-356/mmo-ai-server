@@ -86,8 +86,8 @@ public class GameClient extends ApplicationAdapter {
 
     // Add these near the top with your other variables
     public String myPlayerId = "Mizuhara"; // NOTE: Your teammate MUST change this to "Aizen" on their laptop!
-    private Map<String, GameCharacter> teammateModels = new HashMap<>();
-
+    // Use ConcurrentHashMap to prevent thread crashes!
+    private Map<String, GameCharacter> teammateModels = new ConcurrentHashMap<>();
     private Map<String, Float> teammateTargetX = new ConcurrentHashMap<>();
     private Map<String, Float> teammateTargetY = new ConcurrentHashMap<>();
 
@@ -254,144 +254,150 @@ public class GameClient extends ApplicationAdapter {
         requestObserver = asyncStub.joinLobby(new StreamObserver<GameBridgeProto.GameWorldUpdate>() {
             @Override
             public void onNext(GameBridgeProto.GameWorldUpdate update) {
-                // 1. READ PLAYERS
-                // 1. READ PLAYERS
-                for (GameBridgeProto.EntityState p : update.getPlayersList()) {
-                    if (p.getId().equals(myPlayerId)) {
-                        continue; // Ignore our own server echo
-                    }
-                    
-                    // IT IS A TEAMMATE!
-                    networkPlayers.put(p.getId(), p);
-                    
-                    // 1. Spawn their character model safely on the OpenGL Main Thread
-                    Gdx.app.postRunnable(() -> {
-                        if (!teammateModels.containsKey(p.getId())) {
-                            GameCharacter tModel = null;
-                            String charName = p.getCharacter();
-                            
-                            // Map the incoming name to the correct massive GameCharacter constructor
-                            for (CharacterProfile profile : roster) {
-                                if (profile.name.equals(charName)) {
-                                    if (charName.equals("Ironeye")) {
-                                        tModel = new GameCharacter(profile.idlePath, profile.idleFrames, profile.runPath, 8, "assets/ironeye/Jump.png", 2, profile.attackPath, 4, profile.attackPath, 4, profile.attackPath, 4, "assets/ironeye/Take Hit.png", 4, "assets/ironeye/Death.png", 4, p.getX(), p.getY(), profile.scaleSize);
-                                    } else if (charName.equals("Sekiro")) {
-                                        tModel = new GameCharacter(profile.idlePath, profile.idleFrames, profile.runPath, 8, "assets/sekiro/Jump.png", 2, profile.attackPath, 6, "assets/sekiro/Attack2.png", 6, "assets/sekiro/Attack2.png", 6, "assets/sekiro/Take Hit.png", 4, "assets/sekiro/Death.png", 6, p.getX(), p.getY(), profile.scaleSize);
-                                    } else { // King Nebuchadnezzar
-                                         tModel = new GameCharacter(profile.idlePath, profile.idleFrames, profile.runPath, 8, "assets/nebuchadnezar/Jump.png", 2, profile.attackPath, 4, "assets/nebuchadnezar/Attack2.png", 4, "assets/nebuchadnezar/Attack3.png", 4, "assets/nebuchadnezar/Take Hit - white silhouette.png", 4, "assets/nebuchadnezar/Death.png", 6, p.getX(), p.getY(), profile.scaleSize);
-                                    }
-                                    break;
-                                }
-                            }
-                            // Safety fallback
-                            if (tModel == null) tModel = new GameCharacter(roster.get(0).idlePath, roster.get(0).idleFrames, roster.get(0).runPath, 8, "assets/nebuchadnezar/Jump.png", 2, roster.get(0).attackPath, 4, "assets/nebuchadnezar/Attack2.png", 4, "assets/nebuchadnezar/Attack3.png", 4, "assets/nebuchadnezar/Take Hit - white silhouette.png", 4, "assets/nebuchadnezar/Death.png", 6, p.getX(), p.getY(), roster.get(0).scaleSize);
-                            
-                            teammateModels.put(p.getId(), tModel);
+                // THE SHOCK ABSORBER: Prevents any thread crash from killing the lobby
+                try {
+                    // 1. READ PLAYERS
+                    for (GameBridgeProto.EntityState p : update.getPlayersList()) {
+                        if (p.getId().equals(myPlayerId)) {
+                            continue; // Ignore our own server echo
                         }
-                    });
-
-                    // 2. Sync their animations and position
-                        GameCharacter tModel = teammateModels.get(p.getId());
                         
-                        // FIX: Store their incoming target coordinates instead of snapping them!
-                        teammateTargetX.put(p.getId(), p.getX());
-                        teammateTargetY.put(p.getId(), p.getY());
+                        // IT IS A TEAMMATE!
+                        networkPlayers.put(p.getId(), p);
                         
-                        tModel.isFacingLeft = p.getIsFacingLeft();
-                }
-                
-                // 2. READ DEDICATED ENEMIES STREAM
-                for (GameBridgeProto.EntityState p : update.getEnemiesList()) {
-                    if (!activeEnemies.containsKey(p.getId())) {
-                        // FIX: Force OpenGL to load textures on the Main Thread
+                        // 1. Spawn their character model safely on the OpenGL Main Thread
                         Gdx.app.postRunnable(() -> {
-                            if (!activeEnemies.containsKey(p.getId())) {
-                                GameCharacter enemy = createEnemy(p.getCharacter(), p.getX(), p.getY());
-                                activeEnemies.put(p.getId(), enemy);
-                                enemyTargetX.put(p.getId(), p.getX());
+                            if (!teammateModels.containsKey(p.getId())) {
+                                GameCharacter tModel = null;
+                                String charName = p.getCharacter();
+                                
+                                // Map the incoming name to the correct massive GameCharacter constructor
+                                for (CharacterProfile profile : roster) {
+                                    if (profile.name.equals(charName)) {
+                                        if (charName.equals("Ironeye")) {
+                                            tModel = new GameCharacter(profile.idlePath, profile.idleFrames, profile.runPath, 8, "assets/ironeye/Jump.png", 2, profile.attackPath, 4, profile.attackPath, 4, profile.attackPath, 4, "assets/ironeye/Take Hit.png", 4, "assets/ironeye/Death.png", 4, p.getX(), p.getY(), profile.scaleSize);
+                                        } else if (charName.equals("Sekiro")) {
+                                            tModel = new GameCharacter(profile.idlePath, profile.idleFrames, profile.runPath, 8, "assets/sekiro/Jump.png", 2, profile.attackPath, 6, "assets/sekiro/Attack2.png", 6, "assets/sekiro/Attack2.png", 6, "assets/sekiro/Take Hit.png", 4, "assets/sekiro/Death.png", 6, p.getX(), p.getY(), profile.scaleSize);
+                                        } else { // King Nebuchadnezzar
+                                             tModel = new GameCharacter(profile.idlePath, profile.idleFrames, profile.runPath, 8, "assets/nebuchadnezar/Jump.png", 2, profile.attackPath, 4, "assets/nebuchadnezar/Attack2.png", 4, "assets/nebuchadnezar/Attack3.png", 4, "assets/nebuchadnezar/Take Hit - white silhouette.png", 4, "assets/nebuchadnezar/Death.png", 6, p.getX(), p.getY(), profile.scaleSize);
+                                        }
+                                        break;
+                                    }
+                                }
+                                // Safety fallback
+                                if (tModel == null) tModel = new GameCharacter(roster.get(0).idlePath, roster.get(0).idleFrames, roster.get(0).runPath, 8, "assets/nebuchadnezar/Jump.png", 2, roster.get(0).attackPath, 4, "assets/nebuchadnezar/Attack2.png", 4, "assets/nebuchadnezar/Attack3.png", 4, "assets/nebuchadnezar/Take Hit - white silhouette.png", 4, "assets/nebuchadnezar/Death.png", 6, p.getX(), p.getY(), roster.get(0).scaleSize);
+                                
+                                teammateModels.put(p.getId(), tModel);
                             }
                         });
-                    } else {
-                        GameCharacter e = activeEnemies.get(p.getId());
-                        
-                        // FIX: Block Python's y=150 update if the bat is dead!
-                        if (!e.isDead) {
-                            enemyTargetX.put(p.getId(), p.getX());
-                            e.y = p.getY(); 
-                            e.isFacingLeft = p.getIsFacingLeft();
-                            
-                            if (p.getAction().equals("Attacking") && !e.isAttacking) e.attack();
-                            else if (p.getAction().equals("Running")) e.isMoving = true;
-                            else e.isMoving = false;
-                        }
-                    
-                    }
-                }
-                
-                // 3. READ BOSS
-                if (update.hasBoss()) {
-                    GameBridgeProto.EntityState b = update.getBoss();
-                    boolean serverSaysDead = b.getAction().equals("Dead");
 
-                    // FIX: If the server says he's dead, override local health instantly so the teammate's client agrees.
-                    if (serverSaysDead) {
-                        boss.isDead = true;
-                        boss.currentHealth = 0;
+                        // 2. Sync their animations and position (CRASH FIX: Check if model exists first!)
+                        if (teammateModels.containsKey(p.getId())) {
+                            GameCharacter tModel = teammateModels.get(p.getId());
+                            
+                            teammateTargetX.put(p.getId(), p.getX());
+                            teammateTargetY.put(p.getId(), p.getY());
+                            tModel.isFacingLeft = p.getIsFacingLeft();
+                            
+                            String action = p.getAction();
+                            if (action.equals("Attacking") && !tModel.isAttacking) tModel.attack();
+                            else if (action.equals("SecondaryAttacking") && !tModel.isSecondaryAttacking) tModel.secondaryAttack();
+                            else if (action.equals("SuperAttacking") && !tModel.isSuperAttacking) tModel.superAttack();
+                            else if (action.equals("Parrying")) tModel.parry();
+                            else if (action.equals("Jump")) tModel.jump();
+                            else if (action.equals("Running")) tModel.isMoving = true;
+                            else tModel.isMoving = false;
+                            tModel.isDead = action.equals("Dead");
+                        }
                     }
                     
-                    if (serverSaysDead && !isVideoPhase && !finalPhaseComplete) {
-                        if (currentPhase < 3) {
-                            isVideoPhase = true;
-                            videoPhaseTimer = 10.0f; 
-                            bossIsServerDead = true;
-                            currentPhase++; 
-                            
+                    // 2. READ DEDICATED ENEMIES STREAM
+                    for (GameBridgeProto.EntityState p : update.getEnemiesList()) {
+                        if (!activeEnemies.containsKey(p.getId())) {
                             Gdx.app.postRunnable(() -> {
-                                for (GameCharacter e : activeEnemies.values()) e.dispose();
-                                activeEnemies.clear();
-                                enemyTargetX.clear();
-                                
-                                try {
-                                    videoPlayer = VideoPlayerCreator.createVideoPlayer();
-                                    if (currentPhase == 2) videoPlayer.play(Gdx.files.internal("assets/intro2.webm"));
-                                    else if (currentPhase >= 3) videoPlayer.play(Gdx.files.internal("assets/intro3.webm"));
-                                } catch (Exception e) {}
+                                if (!activeEnemies.containsKey(p.getId())) {
+                                    GameCharacter enemy = createEnemy(p.getCharacter(), p.getX(), p.getY());
+                                    activeEnemies.put(p.getId(), enemy);
+                                    enemyTargetX.put(p.getId(), p.getX());
+                                }
                             });
                         } else {
-                            // Phase 3 beaten! Stop playing videos and let him rot.
-                            finalPhaseComplete = true; 
+                            GameCharacter e = activeEnemies.get(p.getId());
+                            if (!e.isDead) {
+                                enemyTargetX.put(p.getId(), p.getX());
+                                e.y = p.getY(); 
+                                e.isFacingLeft = p.getIsFacingLeft();
+                                
+                                if (p.getAction().equals("Attacking") && !e.isAttacking) e.attack();
+                                else if (p.getAction().equals("Running")) e.isMoving = true;
+                                else e.isMoving = false;
+                            }
                         }
-                    } else if (!serverSaysDead && isVideoPhase) {
-                        isVideoPhase = false;
-                        boss.isDead = false;
-                        boss.currentHealth = boss.maxHealth;
-                        boss.displayedHealth = boss.maxHealth;
-                        boss.hasDealtDamage = false;
-                        boss.x = b.getX();
-                        targetBossX = b.getX();
-                        bossIsServerDead = false;
-                        
-                        // Clean up video memory when the phase starts
-                        Gdx.app.postRunnable(() -> {
-                            if (videoPlayer != null) { videoPlayer.dispose(); videoPlayer = null; }
-                        });
                     }
+                    
+                    // 3. READ BOSS
+                    if (update.hasBoss()) {
+                        GameBridgeProto.EntityState b = update.getBoss();
+                        boolean serverSaysDead = b.getAction().equals("Dead");
 
-                    if (!serverSaysDead) {
-                        targetBossX = b.getX(); 
-                        if (Math.abs(boss.y - b.getY()) > 50f) {
-                            boss.y = b.getY();
+                        if (serverSaysDead) {
+                            boss.isDead = true;
+                            boss.currentHealth = 0;
                         }
-                        boss.isFacingLeft = b.getIsFacingLeft();
                         
-                        if (b.getAction().equals("Attacking") && !boss.isAttacking) boss.attack();
-                        else if (b.getAction().equals("SecondaryAttacking") && !boss.isSecondaryAttacking) boss.secondaryAttack();
-                        else if (b.getAction().equals("Jump")) boss.jump();
-                        else if (b.getAction().equals("Running")) boss.isMoving = true;
-                        else boss.isMoving = false;
+                        if (serverSaysDead && !isVideoPhase && !finalPhaseComplete) {
+                            if (currentPhase < 3) {
+                                isVideoPhase = true;
+                                videoPhaseTimer = 10.0f; 
+                                bossIsServerDead = true;
+                                currentPhase++; 
+                                
+                                Gdx.app.postRunnable(() -> {
+                                    for (GameCharacter e : activeEnemies.values()) e.dispose();
+                                    activeEnemies.clear();
+                                    enemyTargetX.clear();
+                                    
+                                    try {
+                                        videoPlayer = VideoPlayerCreator.createVideoPlayer();
+                                        if (currentPhase == 2) videoPlayer.play(Gdx.files.internal("assets/intro2.webm"));
+                                        else if (currentPhase >= 3) videoPlayer.play(Gdx.files.internal("assets/intro3.webm"));
+                                    } catch (Exception e) {}
+                                });
+                            } else {
+                                finalPhaseComplete = true; 
+                            }
+                        } else if (!serverSaysDead && isVideoPhase) {
+                            isVideoPhase = false;
+                            boss.isDead = false;
+                            boss.currentHealth = boss.maxHealth;
+                            boss.displayedHealth = boss.maxHealth;
+                            boss.hasDealtDamage = false;
+                            boss.x = b.getX();
+                            targetBossX = b.getX();
+                            bossIsServerDead = false;
+                            
+                            Gdx.app.postRunnable(() -> {
+                                if (videoPlayer != null) { videoPlayer.dispose(); videoPlayer = null; }
+                            });
+                        }
+                        
+                        if (!serverSaysDead) {
+                            targetBossX = b.getX(); 
+                            if (Math.abs(boss.y - b.getY()) > 50f) boss.y = b.getY();
+                            boss.isFacingLeft = b.getIsFacingLeft();
+                            
+                            if (b.getAction().equals("Attacking") && !boss.isAttacking) boss.attack();
+                            else if (b.getAction().equals("SecondaryAttacking") && !boss.isSecondaryAttacking) boss.secondaryAttack();
+                            else if (b.getAction().equals("Jump")) boss.jump();
+                            else if (b.getAction().equals("Running")) boss.isMoving = true;
+                            else boss.isMoving = false;
+                        }
                     }
+                } catch (Exception e) {
+                    System.err.println("Safely ignored a corrupted frame: " + e.getMessage());
                 }
             }
+            
             @Override
             public void onError(Throwable t) { System.out.println("Lobby connection lost: " + t.getMessage()); }
             @Override
